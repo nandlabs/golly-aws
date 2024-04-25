@@ -16,6 +16,11 @@ To install the package, run:
 go get oss.nandlabs.io/golly-aws
 ```
 
+## Core Packages
+
+1. [s3vfs](s3vfs/README.md): A virtual filesystem for S3.
+2. 
+
 
 ## Contributing
 
