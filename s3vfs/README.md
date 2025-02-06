@@ -3,24 +3,27 @@
 VFS for S3 allows you to abstract away the underlying file system, and provide a uniform interface for accessing files and directories, regardless of where they are physically located.
 
 ---
+
 - [Installation](#installation)
 - [Features](#features)
 - [Usage](#usage)
+
 ---
 
-### Installation
+## Installation
 
 ```bash
 go get oss.nandlabs.io/golly-aws/s3vfs
 ```
 
-### Features
+## Features
 
 // TODO
 
-### Usage
+## Usage
 
 1. Register your provider
+
     ```go
     package main
     
@@ -70,6 +73,7 @@ go get oss.nandlabs.io/golly-aws/s3vfs
       fmt.Println(file.Info())
    }
    ```
+
 3. Read a file from S3
 4. Delete a file in S3
 5. Write a file in S3
