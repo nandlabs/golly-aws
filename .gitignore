@@ -19,4 +19,4 @@
 # Go Coverage report file.
 coverage.txt
 
-main.go
+msc/
