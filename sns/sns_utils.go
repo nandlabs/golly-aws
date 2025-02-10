@@ -1,13 +1,16 @@
 package sns
 
 import (
+	"context"
 	"errors"
 	"net/url"
 	"regexp"
 	"strings"
 
-	"github.com/aws/aws-sdk-go-v2/aws"
+	"github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/service/sns"
+	"oss.nandlabs.io/golly-aws/awssvc"
+	"oss.nandlabs.io/golly/textutils"
 )
 
 func GetClient(url *url.URL) (client *sns.Client, err error) {
@@ -23,12 +26,20 @@ func GetClient(url *url.URL) (client *sns.Client, err error) {
 }
 
 func CreateSNSClient(url *url.URL) (client *sns.Client, err error) {
-	var awsSession *aws.Config
-	awsSession, err = GetSession(url.Host)
+	awsConfig := awssvc.Manager.Get(awssvc.ExtractKey(url))
+	if awsConfig.Region == textutils.EmptyStr {
+		awsConfig = awssvc.Manager.Get("sqs")
+		if awsConfig.Region == textutils.EmptyStr {
+			awsConfig, err = config.LoadDefaultConfig(context.Background())
+			if err != nil {
+				return
+			}
+		}
+	}
 	if err != nil {
 		return
 	}
-	client = sns.NewFromConfig(*awsSession)
+	client = sns.NewFromConfig(awsConfig)
 	return
 }
 

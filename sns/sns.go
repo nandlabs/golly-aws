@@ -3,23 +3,23 @@ package sns
 import (
 	"context"
 	"net/url"
-	"sync"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/service/sns"
 	"github.com/aws/aws-sdk-go-v2/service/sns/types"
+	"oss.nandlabs.io/golly-aws/utils"
 	"oss.nandlabs.io/golly/messaging"
 	"oss.nandlabs.io/golly/uuid"
 )
 
 const (
-	SchemeSns = "sns"
+	SchemeSns   = "sns"
+	SNSProvider = "sns-provider"
 )
 
 var snsSchemes = []string{SchemeSns}
 
 type ProviderSNS struct {
-	mutex sync.Mutex
 }
 
 func (snsp *ProviderSNS) Schemes() (schemes []string) {
@@ -77,14 +77,17 @@ func (snsp *ProviderSNS) SendBatch(url *url.URL, msgs []messaging.Message, optio
 }
 
 func (snsp *ProviderSNS) Receive(source *url.URL, options ...messaging.Option) (msg messaging.Message, err error) {
+	err = utils.UnsupportedOperation("Receive")
 	return
 }
 
 func (snsp *ProviderSNS) ReceiveBatch(source *url.URL, options ...messaging.Option) (msgs []messaging.Message, err error) {
+	err = utils.UnsupportedOperation("ReceiveBatch")
 	return
 }
 
 func (snsp *ProviderSNS) AddListener(source *url.URL, listener func(msg messaging.Message), options ...messaging.Option) (err error) {
+	err = utils.UnsupportedOperation("AddListener")
 	return
 }
 
@@ -94,6 +97,5 @@ func (snsp *ProviderSNS) Close() (err error) {
 }
 
 func (snsp *ProviderSNS) Id() string {
-	// TODO :: what needs to be provided here with ID
-	return ""
+	return SNSProvider
 }

@@ -48,8 +48,14 @@ The Provider interface includes both the Producer and Receiver interfaces, provi
 
 To install the SNS library, you can use the following go get command:
 
-```go
+```bash
 go get go.nandlabs.io/commons-aws/sns
+```
+
+## URL Format to use
+
+```bash
+sns://topic_name
 ```
 
 ## Usage
@@ -60,30 +66,18 @@ To use the SNS library in your Go project, import the package and register your 
 package main
 
 import (
- "context"
+    "context"
+    "fmt"
 
- "github.com/aws/aws-sdk-go-v2/aws"
- "github.com/aws/aws-sdk-go-v2/config"
- "go.nandlabs.io/commons-aws/sns"
+    "github.com/aws/aws-sdk-go-v2/aws"
+    "github.com/aws/aws-sdk-go-v2/config"
 )
 
-type SnsSessionProvider struct {
- region string
-}
-
-func (snsSessionProvider *SnsSessionProvider) Get() (*aws.Config, error) {
- sess, err := config.LoadDefaultConfig(context.Background(), config.WithRegion(snsSessionProvider.region))
- return &sess, err
-}
-
-func main() {
- pvd := &SnsSessionProvider{
-  region: "us-east-2",
+func init() {
+    config := aws.Config{
+        Region: "us-east-1",
     }
- // Create a new instance of the SQS provider
- sqs.AddSessionProvider(pvd.region, pvd)
-
- // ...
+    awssvc.Manager.Register("sns", config)
 }
 ```
 
@@ -96,18 +90,49 @@ Here are some examples of how to use the SNS library:
     ```go
     package main
    
-    import "go.nandlabs.io/commons-aws/sns"
+    import (
+        "fmt"
+        "net/url"
+
+        _ "oss.nandlabs.io/golly-aws/sns"
+    )
    
     func main() {
-        snsProver := &sns.ProviderSNS{}
-        url := &url.URL{Scheme: "sns", Host: "example.com/topic"}
-        message := sqs.NewMessage("Hello, SNS!")
-        err := snsProver.Send(url, message)
+        manager := messaging.GetManager()
+        u, err := url.Parse("sns://topicname")
         if err != nil {
-        // Handle the error
+            fmt.Println(err)
+        }
+        message, err := manager.NewMessage(u.Scheme)
+        if err != nil {
+            fmt.Println(err)
+        }
+        message.SetBodyStr("hello sns from golly")
+
+        if err := manager.Send(u, message); err != nil {
+            fmt.Println(err)
         }
     }
     ```
+
+2. Sending multiple messages to SNS topic
+
+    ```go
+    package main
+
+    import (
+        "fmt"
+        "net/url"
+
+        _ "oss.nandlabs.io/golly-aws/sqs"
+    )
+
+    func main() {
+        
+    }
+    ```
+
+Ability to receive a message, receive multiple messages and adding a listener is not supported by SNS.
 
 ## Contributing
 
