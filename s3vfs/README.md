@@ -46,11 +46,12 @@ go get oss.nandlabs.io/golly-aws/s3vfs
     }
     
     func main() {
-        pvd := &S3SessionProvider{
-            region: "us-east-1",
-            bucket: "dummy",
+        config := aws.Config{
+            Region: "us-east-1",
         }
-        s3vfs.AddSessionProvider(pvd.region, pvd.bucket, pvd)
+        // Priority -> URL > HOST> Scheme("s3") > default
+    // user can register any key such as host, url, "s3" scheme
+        awssvc.Manager.Register("s3", config)
     }
     ```
 

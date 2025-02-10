@@ -8,16 +8,25 @@ import (
 	"strings"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
+	"github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
 	"github.com/aws/aws-sdk-go-v2/service/s3/types"
+	"oss.nandlabs.io/golly-aws/awssvc"
+	"oss.nandlabs.io/golly/textutils"
 )
 
 type UrlOpts struct {
+	u      *url.URL
 	Host   string
 	Bucket string
 	Key    string
 }
 
+func (urlOpts *UrlOpts) String() string {
+	return urlOpts.u.String()
+}
+
+// S3 url contains a region in itself
 func parseUrl(url *url.URL) (*UrlOpts, error) {
 	err := validateUrl(url)
 	if err != nil {
@@ -33,6 +42,7 @@ func parseUrl(url *url.URL) (*UrlOpts, error) {
 	}
 	key := b.String()
 	return &UrlOpts{
+		u:      url,
 		Host:   host,
 		Bucket: bucket,
 		Key:    key,
@@ -54,13 +64,20 @@ func validateUrl(u *url.URL) error {
 }
 
 func (urlOpts *UrlOpts) CreateS3Client() (client *s3.Client, err error) {
-	var awsSession *aws.Config
-
-	awsSession, err = GetSession(urlOpts.Host, urlOpts.Bucket)
-	if err != nil {
-		return
+	awsConfig := awssvc.Manager.Get(awssvc.ExtractKey(urlOpts.u))
+	if awsConfig.Region == textutils.EmptyStr {
+		awsConfig = awssvc.Manager.Get(urlOpts.Host)
+		if awsConfig.Region == textutils.EmptyStr {
+			awsConfig = awssvc.Manager.Get("s3")
+			if awsConfig.Region == textutils.EmptyStr {
+				awsConfig, err = config.LoadDefaultConfig(context.Background())
+				if err != nil {
+					return
+				}
+			}
+		}
 	}
-	client = s3.NewFromConfig(*awsSession)
+	client = s3.NewFromConfig(awsConfig)
 	return
 }
 
