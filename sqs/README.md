@@ -25,6 +25,12 @@ A number of features are provided out of the box
 - Ability to consume messages from SQS
 - Ability to consume multiple messages from SQS
 
+## URL Format to use
+
+```bash
+sqs://queue_name
+```
+
 ## Usage
 
 Setup the SQS library in order to start using it.
@@ -39,25 +45,13 @@ import (
 
     "github.com/aws/aws-sdk-go-v2/aws"
     "github.com/aws/aws-sdk-go-v2/config"
-    "oss.nandlabs.io/golly-aws/sqs"
 )
 
-type SqsSessionProvider struct {
-    region string
-}
-
-func (sqsSessionProvider *SqsSessionProvider) Get() (*aws.Config, error) {
-    sess, err := config.LoadDefaultConfig(context.Background(), config.WithRegion(sqsSessionProvider.region))
-    return &sess, err
-}
-
 func init() {
-    fmt.Println("testing sqs")
-
-    pvd := &SqsSessionProvider{
-        region: "us-east-1",
+    config := aws.Config{
+        Region: "us-east-1",
     }
-    sqs.AddSessionProvider(pvd.region, pvd)
+    awssvc.Manager.Register("sqs", config)
 }
 ```
 
@@ -70,22 +64,95 @@ func init() {
         "fmt"
         "net/url"
 
-        "oss.nandlabs.io/golly-aws/sqs"
+        _ "oss.nandlabs.io/golly-aws/sqs"
     )
 
     func main() {
-        sqsProvider := &sqs.ProviderSQS{}
-        url := &url.URL{Scheme: "sqs", Host: "example.com"}
-        message := sqs.NewSQSMessage()
-        // message.SetBodyStr("hello from golly")
+        manager := messaging.GetManager()
+        u, err := url.Parse("sqs://queueName")
+        if err != nil {
+            fmt.Println(err)
+        }
+        message, err := manager.NewMessage(u.Scheme)
+        if err != nil {
+            fmt.Println(err)
+        }
+        message.SetBodyStr("hello sqs from golly")
 
-        if err := sqsProvider.Send(url, message); err != nil {
+        if err := manager.Send(u, message); err != nil {
             fmt.Println(err)
         }
     } 
     ```
 
 2. Consume a Message from SQS
+
+    ```go
+    package main
+
+    import (
+        "fmt"
+        "net/url"
+
+        _ "oss.nandlabs.io/golly-aws/sqs"
+    )
+
+    func main() {
+
+    }
+    ```
+
 3. Send multiple messages to SQS (Batch Message Processing)
+
+    ```go
+    package main
+
+    import (
+        "fmt"
+        "net/url"
+
+        _ "oss.nandlabs.io/golly-aws/sqs"
+    )
+
+    func main() {
+        
+    }
+    ```
+
 4. Consume multiple messages from SQS (Batch Message Processing)
+
+    ```go
+    package main
+
+    import (
+        "fmt"
+        "net/url"
+
+        _ "oss.nandlabs.io/golly-aws/sqs"
+    )
+
+    func main() {
+        
+    }
+    ```
+
 5. Add a listener to consume the messages
+
+    ```go
+    package main
+
+    import (
+        "fmt"
+        "net/url"
+
+        _ "oss.nandlabs.io/golly-aws/sqs"
+    )
+
+    func main() {
+        
+    }
+    ```
+
+## Contributing
+
+We welcome contributions to the SQS library! If you find a bug, have a feature request, or want to contribute improvements, please create a pull request. For major changes, please open an issue first to discuss the changes you would like to make.

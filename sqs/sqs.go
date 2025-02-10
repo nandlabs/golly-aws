@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"net/url"
-	"sync"
 	"time"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
@@ -15,7 +14,8 @@ import (
 )
 
 const (
-	SchemeSqs = "sqs"
+	SchemeSqs   = "sqs"
+	SQSProvider = "sqs-provider"
 )
 
 type ReceiveOptions struct {
@@ -26,7 +26,6 @@ type ReceiveOptions struct {
 var sqsSchemes = []string{SchemeSqs}
 
 type ProviderSQS struct {
-	mutex sync.Mutex
 }
 
 func (sqsp *ProviderSQS) Schemes() (schemes []string) {
@@ -40,7 +39,12 @@ func (sqsp *ProviderSQS) Setup() (err error) {
 }
 
 func (sqsp *ProviderSQS) NewMessage(scheme string, options ...messaging.Option) (msg messaging.Message, err error) {
-	msg = NewSQSMessage()
+	baseMsg, err := messaging.NewBaseMessage()
+	if err == nil {
+		msg = &MessageSQS{
+			BaseMessage: baseMsg,
+		}
+	}
 	return
 }
 
@@ -150,15 +154,11 @@ func (sqsp *ProviderSQS) ReceiveBatch(source *url.URL, options ...messaging.Opti
 
 	// Map SQS messages to messaging.Message
 	for _, m := range output.Messages {
-		baseMsg := &messaging.BaseMessage{}
-		baseMsg.SetBodyStr(*m.Body)
-		// SET ID
+		msg, _ := sqsp.NewMessage(source.Scheme)
+		msg.SetBodyStr(*m.Body)
 		// m.ReceiptHandle
-		baseMsg.SetHeader("Receipt", []byte(*m.ReceiptHandle))
-
-		msgs = append(msgs, &MessageSQS{
-			baseMsg,
-		})
+		msg.SetHeader("Receipt", []byte(*m.ReceiptHandle))
+		msgs = append(msgs, msg)
 	}
 
 	return msgs, nil
@@ -197,6 +197,5 @@ func (sqsp *ProviderSQS) Close() (err error) {
 }
 
 func (sqsp *ProviderSQS) Id() string {
-	// TODO :: what needs to be provided here with ID
-	return ""
+	return SQSProvider
 }
