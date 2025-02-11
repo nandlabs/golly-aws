@@ -32,7 +32,12 @@ func (snsp *ProviderSNS) Setup() (err error) {
 }
 
 func (snsp *ProviderSNS) NewMessage(scheme string, options ...messaging.Option) (msg messaging.Message, err error) {
-	msg = NewSNSMessage()
+	baseMsg, err := messaging.NewBaseMessage()
+	if err == nil {
+		msg = &MessageSNS{
+			BaseMessage: baseMsg,
+		}
+	}
 	return
 }
 

@@ -7,6 +7,8 @@ This implementation provides you a set of standard functions to consume be the e
 - [Installation](#installation)
 - [Features](#features)
 - [Usage](#usage)
+- [Examples](#examples)
+- [Contributing](#contributing)
 
 ---
 
@@ -41,7 +43,6 @@ package main
 
 import (
     "context"
-    "fmt"
 
     "github.com/aws/aws-sdk-go-v2/aws"
     "github.com/aws/aws-sdk-go-v2/config"
@@ -55,13 +56,16 @@ func init() {
 }
 ```
 
+## Examples
+
+Here are some examples of how to use the SNS library:
+
 1. Send a Message to SQS
 
     ```go
     package main
 
     import (
-        "fmt"
         "net/url"
 
         _ "oss.nandlabs.io/golly-aws/sqs"
@@ -91,14 +95,22 @@ func init() {
     package main
 
     import (
-        "fmt"
         "net/url"
 
         _ "oss.nandlabs.io/golly-aws/sqs"
     )
 
     func main() {
-
+        manager := messaging.getManager()
+        u, err := url.Parse("sqs://queueName")
+        if err != nil {
+            fmt.Println(err)
+        }
+        msg, err := manager.Receive(u)
+        if err != nil {
+            // handle error
+        }
+        // handle received message (msg)
     }
     ```
 
@@ -108,14 +120,33 @@ func init() {
     package main
 
     import (
-        "fmt"
         "net/url"
 
         _ "oss.nandlabs.io/golly-aws/sqs"
     )
 
     func main() {
-        
+        manager := messaging.GetManager()
+        u, err := url.Parse("sqs://queuename")
+        if err != nil {
+            // handle error
+        }
+        var messages []*messaging.Message
+        msg1, err := manager.NewMessage(u.Scheme)
+        if err != nil {
+            // handle error
+        }
+        msg1.SetBodyStr("this is message1")
+        messages = append(messages, msg1)
+        msg2, err := manager.NewMessage(u.Scheme)
+        if err != nil {
+            // handle error
+        }
+        msg2.SetBodyStr("this is message2")
+        messages = append(messages, msg2)
+        if err := manager.SendBatch(u, messages); err != nil {
+            // handle error
+        }
     }
     ```
 
@@ -125,14 +156,24 @@ func init() {
     package main
 
     import (
-        "fmt"
         "net/url"
 
         _ "oss.nandlabs.io/golly-aws/sqs"
     )
 
     func main() {
-        
+        manager := messaging.getManager()
+        u, err := url.Parse("sqs://queueName")
+        if err != nil {
+            fmt.Println(err)
+        }
+        msgs, err := manager.ReceiveBatch(u)
+        if err != nil {
+            // handle error
+        }
+        for _, msg := range msgs {
+            // handle received messages (msgs)
+        }
     }
     ```
 
@@ -142,14 +183,26 @@ func init() {
     package main
 
     import (
-        "fmt"
         "net/url"
 
         _ "oss.nandlabs.io/golly-aws/sqs"
     )
 
     func main() {
-        
+        manager := messaging.getManager()
+        u, err := url.Parse("sqs://queueName")
+        if err != nil {
+            fmt.Println(err)
+        }
+        handler := func(msg messaging.Message) {
+            fmt.Printf("Received message ID: %s\nBody: %s\n", msg.ID, msg.Body)
+            // Add your message processing logic here
+        }
+
+        err := manager.AddListener(u, handler, messaging.Option{Key: "MaxMessages", Value: int32(5)}, messaging.Option{Key: "WaitTime", Value: int32(10)})
+        if err != nil {
+            // handle error
+        }
     }
     ```
 
