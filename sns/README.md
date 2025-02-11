@@ -67,7 +67,6 @@ package main
 
 import (
     "context"
-    "fmt"
 
     "github.com/aws/aws-sdk-go-v2/aws"
     "github.com/aws/aws-sdk-go-v2/config"
@@ -81,7 +80,7 @@ func init() {
 }
 ```
 
-### Examples
+## Examples
 
 Here are some examples of how to use the SNS library:
 
@@ -91,7 +90,6 @@ Here are some examples of how to use the SNS library:
     package main
    
     import (
-        "fmt"
         "net/url"
 
         _ "oss.nandlabs.io/golly-aws/sns"
@@ -101,16 +99,16 @@ Here are some examples of how to use the SNS library:
         manager := messaging.GetManager()
         u, err := url.Parse("sns://topicname")
         if err != nil {
-            fmt.Println(err)
+            // handle error
         }
         message, err := manager.NewMessage(u.Scheme)
         if err != nil {
-            fmt.Println(err)
+            // handle error
         }
         message.SetBodyStr("hello sns from golly")
 
         if err := manager.Send(u, message); err != nil {
-            fmt.Println(err)
+            // handle error
         }
     }
     ```
@@ -121,14 +119,33 @@ Here are some examples of how to use the SNS library:
     package main
 
     import (
-        "fmt"
         "net/url"
 
-        _ "oss.nandlabs.io/golly-aws/sqs"
+        _ "oss.nandlabs.io/golly-aws/sns"
     )
 
     func main() {
-        
+        manager := messaging.GetManager()
+        u, err := url.Parse("sns://topicname")
+        if err != nil {
+            // handle error
+        }
+        var messages []*messaging.Message
+        msg1, err := manager.NewMessage(u.Scheme)
+        if err != nil {
+            // handle error
+        }
+        msg1.SetBodyStr("this is message1")
+        messages = append(messages, msg1)
+        msg2, err := manager.NewMessage(u.Scheme)
+        if err != nil {
+            // handle error
+        }
+        msg2.SetBodyStr("this is message2")
+        messages = append(messages, msg2)
+        if err := manager.SendBatch(u, messages); err != nil {
+            // handle error
+        }
     }
     ```
 
