@@ -38,6 +38,12 @@ sqs://queue_name
 Setup the SQS library in order to start using it.
 Under you main pacakge, you can add an init function or any method of your choice to initiate the library
 
+The Priority of the Registered Provider is as follows
+
+```bash
+URL > HOST > Scheme("sqs") > default
+```
+
 ```go
 package main
 

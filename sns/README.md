@@ -62,6 +62,12 @@ sns://topic_name
 
 To use the SNS library in your Go project, import the package and register your provider.
 
+The Priority of the Registered Provider is as follows
+
+```bash
+URL > HOST > Scheme("sns") > default
+```
+
 ```go
 package main
 

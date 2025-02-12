@@ -6,7 +6,7 @@
 ![Go Version](https://img.shields.io/github/go-mod/go-version/nandlabs/golly-aws?label=Go&color=00ADD8)
 [![godoc](https://godoc.org/oss.nandlabs.io/golly-aws?status.svg)](https://pkg.go.dev/oss.nandlabs.io/golly-aws)
 
-`golly-aws` is a Go module that provides a set of utilities to interact with AWS services. This is an extension of  [golly](https://github.com/nandlabs/golly).
+`golly-aws` is a Go module that provides a set of utilities to interact with AWS services. This is an extension of [golly](https://github.com/nandlabs/golly).
 
 ## Installation
 
