@@ -64,7 +64,7 @@ func init() {
 
 ## Examples
 
-1. Create a bucket/file in S3
+1. Create a file in S3
 
     ```go
     package main
@@ -76,27 +76,264 @@ func init() {
    
     func main() {
         manager := vfs.GetManager()
-        u, err := url.Parse("s3://bucketName")
+        u, err := url.Parse("s3://{bucket_name}")
         if err != nil {
             // handle error
+            return
         }
         file, err := manager.Create(u)
-
         if err != nil {
             // handle error
+            return
         }
         fmt.Println(file.Info())
     }
     ```
 
-2. Read a file from S3
-3. Delete a file in S3
-4. Write a file in S3
-5. List all the files in S3 bucket
-6. Get File Info of an S3 object
-7. Get metadata of an S3 object
-8. Add metadata to an S3 object
+2. Create a folder
+
+    ```go
+    package main
+
+    import (
+        _ "oss.nandlabs.io/golly-aws/s3vfs"
+        "oss.nandlabs.io/golly/vfs"
+    )
+
+    func main() {
+        manager := vfs.GetManager()
+        u, err := url.Parse("s3://{bucket_name}/test_folder2")
+        if err != nil {
+            // handle error
+            return
+        }
+        vfile, err := manager.MkdirAll(u)
+        if err != nil {
+            // handle error
+            return
+        }
+        fmt.Println(vfile)
+    }
+    ```
+
+3. Read a file from S3
+
+    ```go
+    package main
+
+    import (
+        _ "oss.nandlabs.io/golly-aws/s3vfs"
+        "oss.nandlabs.io/golly/vfs"
+    )
+
+    func main() {
+        manager := vfs.GetManager()
+        u, err := url.Parse("s3://{bucket_name}/test-folder/file1.txt")
+        if err != nil {
+            // handle error
+            return
+        }
+        vfile, err := manager.Open(u)
+        if err != nil {
+            // handle error
+            return
+        }
+        buffer := make([]byte, 15)
+        readbytes, err := vfile.Read(buffer)
+        if err != nil {
+            // handle error
+            return
+        }
+        fmt.Println(readbytes)
+    }
+    ```
+
+4. Delete a file in S3
+
+    ```go
+    package main
+
+    import (
+        _ "oss.nandlabs.io/golly-aws/s3vfs"
+        "oss.nandlabs.io/golly/vfs"
+    )
+
+    func main() {
+        manager := vfs.GetManager()
+        u, err := url.Parse("s3://{bucket_name}/file1.txt")
+        if err != nil {
+            // handle error
+            return
+        }
+        vfile, err := manager.Open(u)
+        if err != nil {
+            // handle error
+            return
+        }
+        err = vfile.Delete()
+        if err != nil {
+            // handle error
+            return
+        }
+    }
+    ```
+
+5. Write a file in S3
+
+    ```go
+    package main
+
+    import (
+        _ "oss.nandlabs.io/golly-aws/s3vfs"
+        "oss.nandlabs.io/golly/vfs"
+    )
+
+    func main() {
+        manager := vfs.GetManager()
+        u, err := url.Parse("s3://{bucket_name}/test-folder/file1.txt")
+        if err != nil {
+            // handle error
+            return
+        }
+        vfile, err := manager.Open(u)
+        if err != nil {
+            // handle error
+            return
+        }
+        inputData := []byte("this is a writing example")
+        writtenBytes, err := vfile.Write(inputData)
+        if err != nil {
+            // handle error
+            return
+        }
+        fmt.Println(writtenBytes)
+    }
+    ```
+
+6. List all the files in S3 bucket
+
+    ```go
+    package main
+
+    import (
+        _ "oss.nandlabs.io/golly-aws/s3vfs"
+        "oss.nandlabs.io/golly/vfs"
+    )
+
+    func main() {
+        manager := vfs.GetManager()
+        u, err := url.Parse("s3://{bucket_name}/test-folder")
+        if err != nil {
+            // handle error
+            return
+        }
+        vfile, err := manager.Open(u)
+        if err != nil {
+            // handle error
+            return
+        }
+        files, err := vfile.ListAll()
+        if err != nil {
+            // handle error
+            return
+        }
+        fmt.Println(len(files))
+        fmt.Println(files)
+    }
+    ```
+
+7. Get File Info of an S3 object
+
+    ```go
+    package main
+
+    import (
+        _ "oss.nandlabs.io/golly-aws/s3vfs"
+        "oss.nandlabs.io/golly/vfs"
+    )
+
+    func main() {
+        manager := vfs.GetManager()
+        u, err := url.Parse("s3://{bucket_name}/test-folder/file1.txt")
+        if err != nil {
+            // handle error
+            return
+        }
+        vfile, err := manager.Open(u)
+        if err != nil {
+            // handle error
+            return
+        }
+        info, err := vfile.Info()
+        if err != nil {
+            // handle error
+            return
+        }
+        fmt.Println(info)
+    }
+    ```
+
+8. Get metadata of an S3 object
+
+    ```go
+    package main
+
+    import (
+        _ "oss.nandlabs.io/golly-aws/s3vfs"
+        "oss.nandlabs.io/golly/vfs"
+    )
+
+    func main() {
+        manager := vfs.GetManager()
+        u, err := url.Parse("s3://{bucket_name}/test-folder/file1.txt")
+        if err != nil {
+            // handle error
+            return
+        }
+        vfile, err := manager.Open(u)
+        if err != nil {
+            // handle error
+            return
+        }
+        value, err := vfile.GetProperty("x-meta-golly-id")
+        if err != nil {
+            // handle error
+            return
+        }
+        fmt.Println(value)
+    }
+    ```
+
+9. Add metadata to an S3 object
+
+    ```go
+    package main
+
+    import (
+        _ "oss.nandlabs.io/golly-aws/s3vfs"
+        "oss.nandlabs.io/golly/vfs"
+    )
+
+    func main() {
+        manager := vfs.GetManager()
+        u, err := url.Parse("s3://{bucket_name}/test-folder/file1.txt")
+        if err != nil {
+            // handle error
+            return
+        }
+        vfile, err := manager.Open(u)
+        if err != nil {
+            // handle error
+            return
+        }
+        err = vfile.AddProperty("x-meta-golly-id", "abcd")
+        if err != nil {
+            // handle error
+            return
+        }
+    }
+    ```
 
 ## Contributing
 
-We welcome contributions to the SQS library! If you find a bug, have a feature request, or want to contribute improvements, please create a pull request. For major changes, please open an issue first to discuss the changes you would like to make.
+We welcome contributions to the S3VFS library! If you find a bug, have a feature request, or want to contribute improvements, please create a pull request. For major changes, please open an issue first to discuss the changes you would like to make.
