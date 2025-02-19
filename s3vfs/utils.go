@@ -1,7 +1,6 @@
 package s3vfs
 
 import (
-	"bytes"
 	"context"
 	"errors"
 	"net/url"
@@ -10,7 +9,6 @@ import (
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
-	"github.com/aws/aws-sdk-go-v2/service/s3/types"
 	"oss.nandlabs.io/golly-aws/awssvc"
 	"oss.nandlabs.io/golly/textutils"
 )
@@ -33,34 +31,30 @@ func parseUrl(url *url.URL) (*UrlOpts, error) {
 		return nil, err
 	}
 	host := url.Host
-	pathParams := strings.Split(url.Path, "/")
-	bucket := pathParams[0]
-	var b bytes.Buffer
-	for _, item := range pathParams[1:] {
-		b.WriteString("/")
-		b.WriteString(item)
-	}
-	key := b.String()
+	path := strings.TrimPrefix(url.String(), "s3://")
+	components := strings.Split(path, "/")
+
+	bucketName := components[0]
+	objectPath := strings.Join(components[1:], "/")
 	return &UrlOpts{
 		u:      url,
 		Host:   host,
-		Bucket: bucket,
-		Key:    key,
+		Bucket: bucketName,
+		Key:    objectPath,
 	}, nil
 }
 
-func validateUrl(u *url.URL) error {
-	pathElements := strings.Split(u.Path, "/")
-	if len(pathElements) == 1 {
-		//Only Bucket provided
-		return nil
-	} else if len(pathElements) >= 2 {
-		//Bucket and object path provided
-		return nil
-	} else { //path elements==0
-		//return error as it's not a valid url with bucket missing
-		return errors.New("invalid url with bucket missing")
+func validateUrl(u *url.URL) (err error) {
+	storageUrl := u.String()
+	if !strings.HasPrefix(storageUrl, "s3://") {
+		return errors.New("invalid URL format, must start with 'storage://'")
 	}
+	path := strings.TrimPrefix(storageUrl, "s3://")
+	components := strings.Split(path, "/")
+	if len(components) < 1 {
+		return errors.New("invalid URL, must specify at least a bucket name")
+	}
+	return
 }
 
 func (urlOpts *UrlOpts) CreateS3Client() (client *s3.Client, err error) {
@@ -70,7 +64,7 @@ func (urlOpts *UrlOpts) CreateS3Client() (client *s3.Client, err error) {
 		if awsConfig.Region == textutils.EmptyStr {
 			awsConfig = awssvc.Manager.Get("s3")
 			if awsConfig.Region == textutils.EmptyStr {
-				awsConfig, err = config.LoadDefaultConfig(context.Background())
+				awsConfig, err = config.LoadDefaultConfig(context.TODO())
 				if err != nil {
 					return
 				}
@@ -81,36 +75,22 @@ func (urlOpts *UrlOpts) CreateS3Client() (client *s3.Client, err error) {
 	return
 }
 
-func keyExists(bucket, key string, svc *s3.Client) (bool, error) {
-	_, err := svc.HeadObject(context.Background(), &s3.HeadObjectInput{
-		Bucket: aws.String(bucket),
-		Key:    aws.String(key),
+func keyExists(bucket, key string, client *s3.Client) (bool, error) {
+	output, err := client.ListObjectsV2(context.TODO(), &s3.ListObjectsV2Input{
+		Bucket:  aws.String(bucket),
+		Prefix:  aws.String(key),
+		MaxKeys: aws.Int32(1),
 	})
 	if err != nil {
-		var nsk *types.NoSuchKey
-		if errors.As(err, &nsk) {
-			// handle NoSuchKey error
-			return false, err
-		}
+		return false, err
 	}
-	return true, nil
+	return len(output.Contents) > 0, nil
 }
 
-func getS3Object(url *url.URL) (result *s3.GetObjectOutput, err error) {
-	var urlOpts *UrlOpts
-	var svc *s3.Client
-
-	urlOpts, err = parseUrl(url)
-	if err != nil {
-		return
-	}
-	svc, err = urlOpts.CreateS3Client()
-	if err != nil {
-		return
-	}
-	result, err = svc.GetObject(context.Background(), &s3.GetObjectInput{
-		Bucket: aws.String(urlOpts.Bucket),
-		Key:    aws.String(urlOpts.Key),
+func getS3Object(s3File *S3File) (result *s3.GetObjectOutput, err error) {
+	result, err = s3File.client.GetObject(context.Background(), &s3.GetObjectInput{
+		Bucket: aws.String(s3File.urlOpts.Bucket),
+		Key:    aws.String(s3File.urlOpts.Key),
 	})
 	return
 }

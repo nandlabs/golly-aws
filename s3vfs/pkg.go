@@ -10,6 +10,6 @@ var (
 )
 
 func init() {
-	s3Fs := &S3Fs{}
+	s3Fs := &S3Fs{BaseVFS: &vfs.BaseVFS{VFileSystem: &S3Fs{}}}
 	vfs.GetManager().Register(s3Fs)
 }
