@@ -17,7 +17,7 @@ func NewDefaultConfig() (aws.Config, error) {
 	return config.LoadDefaultConfig(context.TODO())
 }
 
-func CustomRegionRegion(region string) (customCfg aws.Config, err error) {
+func CustomRegionConfig(region string) (customCfg aws.Config, err error) {
 	customCfg, err = config.LoadDefaultConfig(context.TODO(), config.WithRegion(region))
 	if err != nil {
 		logger.ErrorF("Failed to load custom configuration: %v", err)
