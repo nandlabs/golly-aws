@@ -55,8 +55,9 @@ import (
 )
 
 func init() {
-    config := aws.Config{
-        Region: "us-east-1",
+    conf, err := awssvc.CustomRegionConfig("ap-south-1")
+    if err != nil {
+        return
     }
     awssvc.Manager.Register("s3vfs", config)
 }
