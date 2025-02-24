@@ -5,51 +5,37 @@ import (
 	"context"
 	"fmt"
 	"io"
-	"log"
 	"net/url"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
 	"github.com/aws/aws-sdk-go-v2/service/s3/types"
+	"oss.nandlabs.io/golly/textutils"
 	"oss.nandlabs.io/golly/vfs"
 )
 
 type S3File struct {
 	*vfs.BaseFile
-	Location *url.URL
-	fs       vfs.VFileSystem
-	closers  []io.Closer
+	urlOpts *UrlOpts
+	fs      vfs.VFileSystem
+	closers []io.Closer
+	client  *s3.Client
 }
 
 // Read - s3Object read the body
 func (s3File *S3File) Read(b []byte) (body int, err error) {
 	var result *s3.GetObjectOutput
-
-	result, err = getS3Object(s3File.Location)
+	result, err = getS3Object(s3File)
 	s3File.closers = append(s3File.closers, result.Body)
 	defer s3File.Close()
 	return result.Body.Read(b)
 }
 
 func (s3File *S3File) Write(b []byte) (numBytes int, err error) {
-	var urlOpts *UrlOpts
-	var svc *s3.Client
-
-	urlOpts, err = parseUrl(s3File.Location)
-	if err != nil {
-		numBytes = 0
-		return
-	}
-	svc, err = urlOpts.CreateS3Client()
-	if err != nil {
-		numBytes = 0
-		return
-	}
-
 	// if key exists in s3 then the key will be overwritten else the new key with input body is created
-	_, err = svc.PutObject(context.Background(), &s3.PutObjectInput{
-		Bucket: aws.String(urlOpts.Bucket),
-		Key:    aws.String(urlOpts.Key),
+	_, err = s3File.client.PutObject(context.Background(), &s3.PutObjectInput{
+		Bucket: aws.String(s3File.urlOpts.Bucket),
+		Key:    aws.String(s3File.urlOpts.Key),
 		Body:   bytes.NewReader(b),
 	})
 	if err != nil {
@@ -62,46 +48,46 @@ func (s3File *S3File) Write(b []byte) (numBytes int, err error) {
 }
 
 func (s3File *S3File) ListAll() (files []vfs.VFile, err error) {
-	var urlOpts *UrlOpts
-	var svc *s3.Client
 	var result *s3.ListObjectsV2Output
-
-	urlOpts, err = parseUrl(s3File.Location)
-	if err != nil {
-		return
+	input := &s3.ListObjectsV2Input{
+		Bucket: aws.String(s3File.urlOpts.Bucket),
+		Prefix: aws.String(s3File.urlOpts.Key),
 	}
-	svc, err = urlOpts.CreateS3Client()
-	if err != nil {
-		return
-	}
-
-	result, err = svc.ListObjectsV2(context.Background(), &s3.ListObjectsV2Input{
-		Bucket: aws.String(urlOpts.Bucket),
-	})
+	ctx := context.Background()
 	var contents []types.Object
-	if err != nil {
-		log.Printf("Couldn't list objects in bucket %v. Here's why: %v\n", urlOpts.Bucket, err)
-	} else {
-		contents = result.Contents
+	objectPaginator := s3.NewListObjectsV2Paginator(s3File.client, input)
+	for objectPaginator.HasMorePages() {
+		result, err = objectPaginator.NextPage(ctx)
+		if err != nil {
+			return
+		} else {
+			contents = append(contents, result.Contents...)
+		}
 	}
-
 	for _, item := range contents {
-		u, _ := url.Parse(*item.Key)
-		files = append(files, &S3File{
-			Location: u,
-		})
+		var vFile vfs.VFile
+		if s3File.urlOpts.Key != "" && (*item.Key == s3File.urlOpts.Key+textutils.ForwardSlashStr || *item.Key == s3File.urlOpts.Key) {
+			continue
+		}
+		u := &url.URL{
+			Scheme: s3File.urlOpts.u.Scheme,
+			Host:   s3File.urlOpts.u.Host,
+			Path:   *item.Key,
+		}
+		vFile, err = s3File.fs.Open(u)
+		files = append(files, vFile)
 	}
 	return
 }
 
 func (s3File *S3File) Info() (file vfs.VFileInfo, err error) {
-	var result *s3.GetObjectOutput
-
-	result, err = getS3Object(s3File.Location)
-	s3File.closers = append(s3File.closers, result.Body)
-	defer s3File.Close()
-	file = &s3FileInfo{
-		key:          result.Metadata["key"],
+	result, err := s3File.client.HeadObject(context.TODO(), &s3.HeadObjectInput{
+		Bucket: aws.String(s3File.urlOpts.Bucket),
+		Key:    aws.String(s3File.urlOpts.Key),
+	})
+	file = &S3FileInfo{
+		fs:           s3File.fs,
+		key:          s3File.urlOpts.Key,
 		size:         *result.ContentLength,
 		lastModified: *result.LastModified,
 	}
@@ -109,29 +95,18 @@ func (s3File *S3File) Info() (file vfs.VFileInfo, err error) {
 }
 
 func (s3File *S3File) AddProperty(name, value string) (err error) {
-	var urlOpts *UrlOpts
-	var svc *s3.Client
-
-	urlOpts, err = parseUrl(s3File.Location)
-	if err != nil {
-		return
-	}
-	svc, err = urlOpts.CreateS3Client()
-	if err != nil {
-		return
-	}
 	// Create an input object for the CopyObject API operation.
 	copyInput := &s3.CopyObjectInput{
-		Bucket:            aws.String(urlOpts.Bucket),
-		CopySource:        aws.String(fmt.Sprintf("%s/%s", urlOpts.Bucket, urlOpts.Key)),
-		Key:               aws.String(urlOpts.Key),
-		MetadataDirective: "REPLACE",
+		Bucket:            aws.String(s3File.urlOpts.Bucket),
+		CopySource:        aws.String(fmt.Sprintf("%s/%s", s3File.urlOpts.Bucket, s3File.urlOpts.Key)),
+		Key:               aws.String(s3File.urlOpts.Key),
+		MetadataDirective: types.MetadataDirectiveReplace,
 		Metadata: map[string]string{
 			name: value,
 		},
 	}
 	// Call the CopyObject API operation to create a copy of the object with the new metadata.
-	_, err = svc.CopyObject(context.Background(), copyInput)
+	_, err = s3File.client.CopyObject(context.Background(), copyInput)
 	if err != nil {
 		return
 	}
@@ -139,61 +114,34 @@ func (s3File *S3File) AddProperty(name, value string) (err error) {
 }
 
 func (s3File *S3File) GetProperty(name string) (value string, err error) {
-	var urlOpts *UrlOpts
-	var svc *s3.Client
 	var result *s3.HeadObjectOutput
-
-	urlOpts, err = parseUrl(s3File.Location)
-	if err != nil {
-		return
-	}
-	svc, err = urlOpts.CreateS3Client()
-	if err != nil {
-		return
-	}
 	// Create an input object for the HeadObject API operation.
 	input := &s3.HeadObjectInput{
-		Bucket: aws.String(urlOpts.Bucket),
-		Key:    aws.String(urlOpts.Key),
+		Bucket: aws.String(s3File.urlOpts.Bucket),
+		Key:    aws.String(s3File.urlOpts.Key),
 	}
 	// Call the HeadObject API operation to retrieve the object metadata.
-	result, err = svc.HeadObject(context.Background(), input)
+	result, err = s3File.client.HeadObject(context.Background(), input)
 	if err != nil {
 		return
 	}
 	value = result.Metadata[name]
-
 	return
 }
 
 func (s3File *S3File) Url() *url.URL {
-	return s3File.Location
+	return s3File.urlOpts.u
 }
 
 func (s3File *S3File) Delete() (err error) {
-	var urlOpts *UrlOpts
-	var svc *s3.Client
-	var result *s3.DeleteObjectOutput
-
-	urlOpts, err = parseUrl(s3File.Location)
-	if err != nil {
-		return
-	}
-	svc, err = urlOpts.CreateS3Client()
-	if err != nil {
-		return
-	}
-
 	input := &s3.DeleteObjectInput{
-		Bucket: aws.String(urlOpts.Bucket),
-		Key:    aws.String(urlOpts.Key),
+		Bucket: aws.String(s3File.urlOpts.Bucket),
+		Key:    aws.String(s3File.urlOpts.Key),
 	}
-
-	result, err = svc.DeleteObject(context.Background(), input)
+	_, err = s3File.client.DeleteObject(context.Background(), input)
 	if err != nil {
 		return
 	}
-	logger.Info(result)
 	return
 }
 
@@ -204,4 +152,8 @@ func (s3File *S3File) Close() (err error) {
 		}
 	}
 	return
+}
+
+func (s3File *S3File) String() string {
+	return s3File.urlOpts.u.String()
 }

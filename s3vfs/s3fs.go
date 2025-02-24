@@ -1,13 +1,17 @@
 package s3vfs
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"net/url"
+	"strings"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
+	"oss.nandlabs.io/golly/textutils"
 	"oss.nandlabs.io/golly/vfs"
 )
 
@@ -21,12 +25,11 @@ type S3Fs struct {
 	*vfs.BaseVFS
 }
 
-// Create : creating a file in the s3 bucket, can create both object and bucket
+// Create : creating a file in the s3 bucket
 func (s3Fs *S3Fs) Create(u *url.URL) (file vfs.VFile, err error) {
 	var urlOpts *UrlOpts
 	var svc *s3.Client
 	var found bool
-
 	urlOpts, err = parseUrl(u)
 	if err != nil {
 		return
@@ -37,29 +40,74 @@ func (s3Fs *S3Fs) Create(u *url.URL) (file vfs.VFile, err error) {
 	}
 	// check if the same path already exist on the s3 or not
 	found, err = keyExists(urlOpts.Bucket, urlOpts.Key, svc)
-	if !found {
+	if err != nil {
+		fmt.Printf("Error checking path: %v\n", err)
 		return
 	}
-
-	// create the folder structure or an empty file
+	if found {
+		err = errors.New("object already exists")
+		return
+	}
+	// create an empty file
 	_, err = svc.PutObject(context.Background(), &s3.PutObjectInput{
 		Bucket: aws.String(urlOpts.Bucket),
 		Key:    aws.String(urlOpts.Key),
+		Body:   bytes.NewReader([]byte("")),
 	})
 	if err != nil {
 		fmt.Println("Error uploading file:", err)
 		return
 	}
+	file = &S3File{
+		urlOpts: urlOpts,
+		fs:      s3Fs,
+		closers: make([]io.Closer, 0),
+		client:  svc,
+	}
 	return
 }
 
 func (s3Fs *S3Fs) Mkdir(u *url.URL) (file vfs.VFile, err error) {
-	err = errors.New("operation Mkdir not supported")
-	return
+	return s3Fs.MkdirAll(u)
 }
 
 func (s3Fs *S3Fs) MkdirAll(u *url.URL) (file vfs.VFile, err error) {
-	err = errors.New("operation MkdirAll not supported")
+	urlOpts, err := parseUrl(u)
+	if err != nil {
+		return
+	}
+	client, err := urlOpts.CreateS3Client()
+	if err != nil {
+		return
+	}
+	// check if the same path already exist on the s3 or not
+	found, err := keyExists(urlOpts.Bucket, urlOpts.Key, client)
+	if err != nil {
+		fmt.Printf("Error checking path: %v\n", err)
+		return
+	}
+	if found {
+		err = errors.New("object already exists")
+		return
+	}
+	path := urlOpts.Key
+	if !strings.HasSuffix(path, textutils.ForwardSlashStr) {
+		path = path + textutils.ForwardSlashStr
+	}
+	_, err = client.PutObject(context.Background(), &s3.PutObjectInput{
+		Bucket: aws.String(urlOpts.Bucket),
+		Key:    aws.String(path),
+	})
+	if err != nil {
+		fmt.Println("Error uploading file:", err)
+		return
+	}
+	file = &S3File{
+		urlOpts: urlOpts,
+		fs:      s3Fs,
+		closers: make([]io.Closer, 0),
+		client:  client,
+	}
 	return
 }
 
@@ -76,20 +124,19 @@ func (s3Fs *S3Fs) Open(u *url.URL) (file vfs.VFile, err error) {
 	if err != nil {
 		return
 	}
-
-	_, err = svc.GetObject(context.Background(), &s3.GetObjectInput{
-		Bucket: aws.String(urlOpts.Bucket),
-		Key:    aws.String(urlOpts.Key),
-	})
-	if err != nil {
-		fmt.Println("Error downloading file:", err)
-		return
-	}
-	if err == nil {
-		file = &S3File{
-			Location: u,
-			fs:       s3Fs,
-		}
+	// _, err = svc.GetObject(context.Background(), &s3.GetObjectInput{
+	// 	Bucket: aws.String(urlOpts.Bucket),
+	// 	Key:    aws.String(urlOpts.Key),
+	// })
+	// if err != nil {
+	// 	fmt.Println("Error downloading file:", err)
+	// 	return
+	// }
+	file = &S3File{
+		fs:      s3Fs,
+		client:  svc,
+		urlOpts: urlOpts,
+		closers: make([]io.Closer, 0),
 	}
 	return
 }
