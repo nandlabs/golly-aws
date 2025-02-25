@@ -8,7 +8,7 @@ require (
 	github.com/aws/aws-sdk-go-v2/service/s3 v1.53.1
 	github.com/aws/aws-sdk-go-v2/service/sns v1.33.19
 	github.com/aws/aws-sdk-go-v2/service/sqs v1.37.13
-	oss.nandlabs.io/golly v1.2.2
+	oss.nandlabs.io/golly v1.2.6
 )
 
 require (
