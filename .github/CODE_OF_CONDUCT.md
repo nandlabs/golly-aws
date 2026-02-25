@@ -66,8 +66,7 @@ community:
 
 Instances of abusive, harassing, or otherwise unacceptable behavior may be
 reported by contacting the project maintainers at
-[conduct@oss.nandlabs.io](mailto:conduct@oss.nandlabs.io). All complaints will
-be reviewed and investigated promptly and fairly. The maintainers are
-responsible for determining the appropriate actions to be taken, which may
+[conduct-oss@nandlabs.io](mailto:conduct-oss@nandlabs.io). All complaints will
+be reviewed and investigated fairly. The maintainers will decide the appropriate actions to be taken, which may
 include warnings, temporary or permanent bans, or other measures deemed
 necessary.

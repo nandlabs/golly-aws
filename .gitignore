@@ -1,23 +1,33 @@
-# Binaries for programs and plugins
+# IDE and editor files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Go build artifacts
 *.exe
 *.exe~
 *.dll
 *.so
 *.dylib
 
-# Test binary, built with `go test -c`
+# Test artifacts
 *.test
-
-# Output of the go coverage tool, specifically when used with LiteIDE
 *.out
+.out
+coverage.out
+coverage.html
 
-# Dependency directories (remove the comment below to include it)
-# vendor/
+# Configuration files (local overrides)
+log-config.json
 
-# Intellij IDE files
-.idea
-# Go Coverage report file.
-coverage.txt
+# Binary output
+bin/
+dist/
 
-msc/
-main.go
+.tmp/
