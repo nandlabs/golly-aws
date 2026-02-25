@@ -43,11 +43,15 @@ jobs:
           echo "$CHANGELOG" > changelog.txt
 
       - name: Create GitHub Release
-        uses: softprops/action-gh-release@a06a81a03ee405af7f2048a818ed3f03bbf83c7b # v2.5.0
-        with:
-          generate_release_notes: true
-          body_path: changelog.txt
-          draft: false
-          prerelease: ${{ contains(github.ref, '-rc') || contains(github.ref, '-beta') || contains(github.ref, '-alpha') }}
+        run: |
+          PRERELEASE_FLAG=""
+          if echo "${{ github.ref_name }}" | grep -qE '(-rc|-beta|-alpha)'; then
+            PRERELEASE_FLAG="--prerelease"
+          fi
+          gh release create "${{ github.ref_name }}" \
+            --title "${{ github.ref_name }}" \
+            --notes-file changelog.txt \
+            --generate-notes \
+            $PRERELEASE_FLAG
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
