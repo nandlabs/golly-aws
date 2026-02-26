@@ -1,6 +1,6 @@
 module oss.nandlabs.io/golly-aws
 
-go 1.22.1
+go 1.25
 
 require (
 	github.com/aws/aws-sdk-go-v2 v1.36.1
@@ -8,7 +8,7 @@ require (
 	github.com/aws/aws-sdk-go-v2/service/s3 v1.53.1
 	github.com/aws/aws-sdk-go-v2/service/sns v1.33.19
 	github.com/aws/aws-sdk-go-v2/service/sqs v1.37.13
-	oss.nandlabs.io/golly v1.2.2
+	oss.nandlabs.io/golly v1.3.0
 )
 
 require (
@@ -27,5 +27,5 @@ require (
 	github.com/aws/aws-sdk-go-v2/service/ssooidc v1.26.4 // indirect
 	github.com/aws/aws-sdk-go-v2/service/sts v1.30.3 // indirect
 	github.com/aws/smithy-go v1.22.2 // indirect
-	gopkg.in/yaml.v3 v3.0.1 // indirect
+	github.com/goccy/go-yaml v1.19.2 // indirect
 )
