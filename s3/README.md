@@ -1,4 +1,4 @@
-# s3vfs
+# s3
 
 AWS S3 implementation of the [golly VFS](https://pkg.go.dev/oss.nandlabs.io/golly/vfs) (Virtual File System) interface.
 
@@ -6,13 +6,17 @@ AWS S3 implementation of the [golly VFS](https://pkg.go.dev/oss.nandlabs.io/goll
 
 - [Installation](#installation)
 - [Features](#features)
+- [Architecture](#architecture)
+- [Auto-Registration](#auto-registration)
 - [URL Format](#url-format)
 - [Configuration](#configuration)
   - [How It Works](#how-it-works)
   - [Config Options](#config-options)
   - [Setup Examples](#setup-examples)
 - [Usage](#usage)
+- [Error Handling](#error-handling)
 - [API Reference](#api-reference)
+- [Prerequisites](#prerequisites)
 - [Contributing](#contributing)
 
 ---
@@ -20,7 +24,7 @@ AWS S3 implementation of the [golly VFS](https://pkg.go.dev/oss.nandlabs.io/goll
 ## Installation
 
 ```bash
-go get oss.nandlabs.io/golly-aws/s3vfs
+go get oss.nandlabs.io/golly-aws/s3
 ```
 
 ## Features
@@ -52,6 +56,69 @@ go get oss.nandlabs.io/golly-aws/s3vfs
 
 All operations also have `*Raw` variants that accept URL strings instead of `*url.URL`.
 
+## Architecture
+
+```
+┌──────────────────────────────────────────────────────────────────┐
+│  Application                                                     │
+│                                                                  │
+│  import _ "oss.nandlabs.io/golly-aws/s3"                         │
+│                                                                  │
+│  mgr := vfs.GetManager()                                         │
+│  mgr.OpenRaw("s3://bucket/key")                                  │
+│  mgr.CreateRaw("s3://bucket/key")                                │
+│  mgr.CopyRaw(src, dst)                                           │
+└─────────────────────────┬────────────────────────────────────────┘
+                          │
+                          ▼
+┌──────────────────────────────────────────────────────────────────┐
+│  golly/vfs.Manager                                               │
+│                                                                  │
+│  Routes to filesystem by URL scheme ("s3")                       │
+│  Calls S3FS.Open / Create / Copy / List / Walk / Delete / ...    │
+└─────────────────────────┬────────────────────────────────────────┘
+                          │
+                          ▼
+┌──────────────────────────────────────────────────────────────────┐
+│  s3.S3FS (VFileSystem)                                           │
+│                                                                  │
+│  1. parseURL(u)           → bucket + key from "s3://b/k"         │
+│  2. getS3Client(opts)     → awscfg.GetConfig(u, "s3")            │
+│  3. S3 API call           → PutObject / GetObject / ListV2 etc   │
+│  4. Returns S3File        → implements VFile (Read/Write/Close)  │
+└─────────────────────────┬────────────────────────────────────────┘
+                          │
+                          ▼
+┌──────────────────────────────────────────────────────────────────┐
+│  awscfg.Manager                                                  │
+│                                                                  │
+│  Config resolution chain:                                        │
+│  url.Host → url.Host+"/"+url.Path → fallback name ("s3")         │
+│                                                                  │
+│  Returns *awscfg.Config → LoadAWSConfig() → aws.Config           │
+└──────────────────────────────────────────────────────────────────┘
+```
+
+## Auto-Registration
+
+On package import, the `init()` function in `pkg.go` creates an `S3FS` and registers it with `vfs.GetManager()`:
+
+```go
+func init() {
+    storageFs := &S3FS{}
+    storageFs.BaseVFS = &vfs.BaseVFS{VFileSystem: storageFs}
+    vfs.GetManager().Register(storageFs)
+}
+```
+
+This means a **blank import** is all you need to make the S3 filesystem available:
+
+```go
+import _ "oss.nandlabs.io/golly-aws/s3"
+```
+
+After this import, any call to `vfs.GetManager().OpenRaw("s3://...")` will automatically route to this filesystem.
+
 ## URL Format
 
 ```
@@ -65,9 +132,18 @@ s3://bucket-name/path/to/folder/
 | Host      | S3 bucket name                 |
 | Path      | Object key (prefix + filename) |
 
+**Examples:**
+
+| URL                                   | Bucket          | Key                     | Type      |
+| ------------------------------------- | --------------- | ----------------------- | --------- |
+| `s3://my-bucket/data/report.csv`      | `my-bucket`     | `data/report.csv`       | File      |
+| `s3://my-bucket/logs/`                | `my-bucket`     | `logs/`                 | Directory |
+| `s3://my-bucket/archive/2026/jan.zip` | `my-bucket`     | `archive/2026/jan.zip`  | File      |
+| `s3://backup-bucket/`                 | `backup-bucket` | _(empty — bucket root)_ | Directory |
+
 ## Configuration
 
-s3vfs uses the [`awscfg`](../awscfg/) package for AWS configuration management. At the core of this system is `awscfg.Manager` — a named registry of `*awscfg.Config` instances. You register configs under keys, and s3vfs automatically resolves the right config for each S3 URL.
+s3 uses the [`awscfg`](../awscfg/) package for AWS configuration management. At the core of this system is `awscfg.Manager` — a named registry of `*awscfg.Config` instances. You register configs under keys, and s3 automatically resolves the right config for each S3 URL.
 
 ### How It Works
 
@@ -90,7 +166,7 @@ awscfg.Manager.Register("logs-bucket", logsCfg)         // another bucket
 
 #### 2. Resolution
 
-When s3vfs needs an S3 client (e.g., to read `s3://my-bucket/data/file.txt`), it calls:
+When s3 needs an S3 client (e.g., to read `s3://my-bucket/data/file.txt`), it calls:
 
 ```go
 cfg := awscfg.GetConfig(parsedURL, "s3")
@@ -104,33 +180,33 @@ cfg := awscfg.GetConfig(parsedURL, "s3")
 | 2    | `url.Host + "/" + url.Path` | `Manager.Get("my-bucket/data/file.txt")`   | Path-specific config          |
 | 3    | Fallback name (`"s3"`)      | `Manager.Get("s3")`                        | Default config for all S3 ops |
 
-The first non-nil result is used. If all three return nil, s3vfs attempts to load the default AWS config from the environment (env vars, `~/.aws/config`, instance metadata, etc.).
+The first non-nil result is used. If all three return nil, s3 attempts to load the default AWS config from the environment (env vars, `~/.aws/config`, instance metadata, etc.).
 
 #### 3. Client Creation
 
-Once a config is resolved, s3vfs:
+Once a config is resolved, s3:
 
 1. Calls `cfg.LoadAWSConfig(ctx)` to build an `aws.Config` — this applies region, profile, credentials, shared config files, and any custom load options.
 2. Creates an `s3.Client` from the resulting `aws.Config`.
 3. If `cfg.Endpoint` is set (e.g., for LocalStack), it also enables **path-style addressing** and sets the custom base endpoint on the client.
 
 ```
-┌─────────────────┐     ┌──────────────────────┐     ┌────────────────┐
-│  S3 URL          │────▶│  awscfg.GetConfig()   │────▶│  *awscfg.Config │
-│  s3://bucket/key │     │  (3-step resolution)  │     │  (Region, Creds)│
-└─────────────────┘     └──────────────────────┘     └───────┬────────┘
-                                                              │
-                                                              ▼
-                                                     ┌────────────────┐
-                                                     │  LoadAWSConfig() │
-                                                     │  → aws.Config   │
-                                                     └───────┬────────┘
-                                                              │
-                                                              ▼
-                                                     ┌────────────────┐
-                                                     │  s3.Client      │
-                                                     │  (ready to use) │
-                                                     └────────────────┘
+┌──────────────────┐     ┌────────────────────────┐     ┌───────────────────┐
+│  S3 URL          │────▶│  awscfg.GetConfig()    │────▶│  *awscfg.Config   │
+│  s3://bucket/key │     │  (3-step resolution)   │     │  (Region, Creds)  │
+└──────────────────┘     └────────────────────────┘     └────────┬──────────┘
+                                                                 │
+                                                                 ▼
+                                                        ┌──────────────────┐
+                                                        │  LoadAWSConfig() │
+                                                        │  → aws.Config    │
+                                                        └───────┬──────────┘
+                                                                │
+                                                                ▼
+                                                        ┌─────────────────┐
+                                                        │  s3.Client      │
+                                                        │  (ready to use) │
+                                                        └─────────────────┘
 ```
 
 ### Config Options
@@ -157,7 +233,7 @@ package main
 
 import (
     "oss.nandlabs.io/golly-aws/awscfg"
-    _ "oss.nandlabs.io/golly-aws/s3vfs" // auto-registers with VFS manager
+    _ "oss.nandlabs.io/golly-aws/s3" // auto-registers with VFS manager
     "oss.nandlabs.io/golly/vfs"
 )
 
@@ -166,7 +242,7 @@ func main() {
     cfg := awscfg.NewConfig("us-east-1")
     awscfg.Manager.Register("s3", cfg)
 
-    // Now use the VFS manager — s3vfs resolves config automatically
+    // Now use the VFS manager — s3 resolves config automatically
     mgr := vfs.GetManager()
     file, _ := mgr.OpenRaw("s3://my-bucket/data/file.txt")
     // ...
@@ -191,7 +267,7 @@ awscfg.Manager.Register("s3", cfg)
 
 #### With Custom Endpoint (LocalStack, MinIO)
 
-When using a custom endpoint, s3vfs automatically enables path-style addressing (`http://localhost:4566/bucket/key` instead of `http://bucket.localhost:4566/key`):
+When using a custom endpoint, s3 automatically enables path-style addressing (`http://localhost:4566/bucket/key` instead of `http://bucket.localhost:4566/key`):
 
 ```go
 cfg := awscfg.NewConfig("us-east-1")
@@ -420,6 +496,124 @@ csvFiles, err := vfs.GetManager().Find(location, func(file vfs.VFile) (bool, err
 | `ModTime()` | Last modified time          |
 | `IsDir()`   | `true` if prefix/directory  |
 | `Sys()`     | Returns the `VFileSystem`   |
+
+## Error Handling
+
+### URL Validation Errors
+
+All operations validate the S3 URL before making any API calls:
+
+| Error                                            | When                                |
+| ------------------------------------------------ | ----------------------------------- |
+| `url cannot be nil`                              | A nil `*url.URL` was passed         |
+| `invalid URL scheme, expected 's3'`              | URL scheme is not `s3`              |
+| `invalid S3 URL, bucket name (host) is required` | URL has no host (e.g., `s3:///key`) |
+
+### File System Errors
+
+| Error                                    | When                                                  |
+| ---------------------------------------- | ----------------------------------------------------- |
+| `file s3://bucket/key already exists`    | `Create` called for an object that already exists     |
+| `seek not fully supported on S3 objects` | `Seek` called with anything other than `SeekStart, 0` |
+| `failed to get object metadata: ...`     | `AddProperty` / `GetProperty` — `HeadObject` failed   |
+| `failed to update object metadata: ...`  | `AddProperty` — metadata `CopyObject` REPLACE failed  |
+| `metadata key "..." not found`           | `GetProperty` — requested key not in user metadata    |
+
+### AWS API Errors
+
+All S3 API calls can return AWS SDK errors. Common examples:
+
+| AWS Error                 | Typical Cause                                             |
+| ------------------------- | --------------------------------------------------------- |
+| `NoSuchBucket`            | The bucket does not exist                                 |
+| `NoSuchKey`               | The object does not exist (for `GetObject`, `HeadObject`) |
+| `AccessDenied`            | IAM policy does not grant the required permission         |
+| `BucketAlreadyOwnedByYou` | Bucket already exists (for bucket creation)               |
+| `InvalidBucketName`       | Bucket name doesn't conform to S3 naming rules            |
+| `RequestTimeout`          | Network timeout or slow connection                        |
+
+### Write Behavior
+
+Writes are **buffered in memory** and only flushed to S3 when `Close()` is called. If `Close()` returns an error, the data was **not** persisted to S3. Always check the error from `Close()`:
+
+```go
+file, _ := vfs.GetManager().CreateRaw("s3://bucket/key")
+file.WriteString("data")
+
+// IMPORTANT: check the error — this is where the PutObject call happens
+if err := file.Close(); err != nil {
+    log.Fatalf("failed to write to S3: %v", err)
+}
+```
+
+### Copy Behavior
+
+`Copy` first attempts a **server-side copy** (`CopyObject`), which is fast and doesn't transfer data through your application. If server-side copy fails (e.g., cross-region), it falls back to a **stream copy** (download from source, upload to destination). Directory copies recursively copy all children.
+
+### Directory Semantics
+
+S3 has no native directory concept. This package simulates directories using:
+
+- **Trailing slash keys**: `data/` is a zero-byte object acting as a directory marker
+- **Common prefixes**: `ListObjectsV2` with a delimiter groups keys by prefix
+- **Prefix detection**: If `HeadObject` fails but `ListObjectsV2` with `prefix + "/"` returns results, the path is treated as a directory
+
+Operations like `Delete`, `Walk`, and `ListAll` automatically handle recursive prefix traversal.
+
+## Prerequisites
+
+### AWS Permissions
+
+The IAM principal used must have the following S3 permissions depending on the operations performed:
+
+| Action            | Required For                                                             |
+| ----------------- | ------------------------------------------------------------------------ |
+| `s3:GetObject`    | `Read`, `Open` (when reading), `AsString`, `AsBytes`                     |
+| `s3:PutObject`    | `Create`, `Write`, `Close` (flush), `Mkdir`, `MkdirAll`                  |
+| `s3:DeleteObject` | `Delete`, `DeleteAll`, `DeleteMatching`, `Move`                          |
+| `s3:ListBucket`   | `List`, `Walk`, `Find`, `ListAll`, `DeleteAll`, `Info` (directory check) |
+| `s3:HeadObject`   | `Info`, `Create` (existence check), `AddProperty`, `GetProperty`         |
+| `s3:CopyObject`   | `Copy`, `Move`, `AddProperty` (metadata update)                          |
+
+**Minimal policy for read-only access:**
+
+```json
+{
+  "Effect": "Allow",
+  "Action": ["s3:GetObject", "s3:ListBucket", "s3:HeadObject"],
+  "Resource": ["arn:aws:s3:::my-bucket", "arn:aws:s3:::my-bucket/*"]
+}
+```
+
+**Full access policy:**
+
+```json
+{
+  "Effect": "Allow",
+  "Action": [
+    "s3:GetObject",
+    "s3:PutObject",
+    "s3:DeleteObject",
+    "s3:ListBucket",
+    "s3:HeadObject",
+    "s3:CopyObject"
+  ],
+  "Resource": ["arn:aws:s3:::my-bucket", "arn:aws:s3:::my-bucket/*"]
+}
+```
+
+> **Note:** `s3:ListBucket` requires the bucket ARN (`arn:aws:s3:::my-bucket`), while object-level actions require the object ARN (`arn:aws:s3:::my-bucket/*`). Both must be included.
+
+### AWS Credentials
+
+Credentials can be provided through any of the following (resolved by awscfg or the AWS SDK default chain):
+
+- `awscfg.Config` with static credentials (`SetStaticCredentials`)
+- `awscfg.Config` with a named profile (`SetProfile`)
+- `awscfg.Config` with shared config/credentials files
+- AWS environment variables (`AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `AWS_SESSION_TOKEN`)
+- IAM instance profile / ECS task role / EKS IRSA
+- AWS SSO
 
 ## Contributing
 

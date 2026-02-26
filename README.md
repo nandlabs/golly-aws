@@ -13,7 +13,7 @@
 The Template has 2 main Variables that can be replaced
 
 1. golly-aws : The Repository Name
-2. golly-aws : The Go Module name
+2. oss.nandlabs.io/golly-aws : The Go Module name
 
 ## Contributing
 

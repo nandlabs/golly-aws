@@ -1,9 +1,9 @@
-package s3vfs
+package s3
 
 import (
 	"context"
 
-	"github.com/aws/aws-sdk-go-v2/service/s3"
+	awss3 "github.com/aws/aws-sdk-go-v2/service/s3"
 	"oss.nandlabs.io/golly-aws/awscfg"
 	"oss.nandlabs.io/golly/l3"
 	"oss.nandlabs.io/golly/vfs"
@@ -18,7 +18,7 @@ func init() {
 }
 
 // getS3Client creates an S3 client using the awscfg config resolved for the given urlOpts.
-func getS3Client(opts *urlOpts) (*s3.Client, error) {
+func getS3Client(opts *urlOpts) (*awss3.Client, error) {
 	cfg := awscfg.GetConfig(opts.u, S3Scheme)
 	if cfg == nil {
 		// Fallback: load default AWS config without awscfg registration
@@ -26,7 +26,7 @@ func getS3Client(opts *urlOpts) (*s3.Client, error) {
 		if err != nil {
 			return nil, err
 		}
-		return s3.NewFromConfig(awsCfg), nil
+		return awss3.NewFromConfig(awsCfg), nil
 	}
 
 	awsCfg, err := cfg.LoadAWSConfig(context.Background())
@@ -34,13 +34,13 @@ func getS3Client(opts *urlOpts) (*s3.Client, error) {
 		return nil, err
 	}
 
-	var s3Opts []func(*s3.Options)
+	var s3Opts []func(*awss3.Options)
 	if cfg.Endpoint != "" {
-		s3Opts = append(s3Opts, func(o *s3.Options) {
+		s3Opts = append(s3Opts, func(o *awss3.Options) {
 			o.BaseEndpoint = &cfg.Endpoint
 			o.UsePathStyle = true
 		})
 	}
 
-	return s3.NewFromConfig(awsCfg, s3Opts...), nil
+	return awss3.NewFromConfig(awsCfg, s3Opts...), nil
 }

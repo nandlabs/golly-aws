@@ -1,4 +1,4 @@
-package s3vfs
+package s3
 
 import (
 	"bytes"
@@ -9,7 +9,7 @@ import (
 	"strings"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
-	"github.com/aws/aws-sdk-go-v2/service/s3"
+	awss3 "github.com/aws/aws-sdk-go-v2/service/s3"
 	"oss.nandlabs.io/golly/textutils"
 	"oss.nandlabs.io/golly/vfs"
 )
@@ -17,7 +17,7 @@ import (
 // S3File implements the vfs.VFile interface for S3 objects.
 type S3File struct {
 	*vfs.BaseFile
-	client  *s3.Client
+	client  *awss3.Client
 	fs      *S3FS
 	urlOpts *urlOpts
 	// reader/writer state
@@ -30,7 +30,7 @@ type S3File struct {
 // Read reads from the S3 object.
 func (f *S3File) Read(b []byte) (n int, err error) {
 	if f.reader == nil {
-		input := &s3.GetObjectInput{
+		input := &awss3.GetObjectInput{
 			Bucket: aws.String(f.urlOpts.Bucket),
 			Key:    aws.String(f.urlOpts.Key),
 		}
@@ -81,7 +81,7 @@ func (f *S3File) Close() error {
 		if ct == "" {
 			ct = "application/octet-stream"
 		}
-		input := &s3.PutObjectInput{
+		input := &awss3.PutObjectInput{
 			Bucket:      aws.String(f.urlOpts.Bucket),
 			Key:         aws.String(f.urlOpts.Key),
 			Body:        f.writeBuffer,
@@ -108,12 +108,12 @@ func (f *S3File) ListAll() (files []vfs.VFile, err error) {
 		prefix = prefix + textutils.ForwardSlashStr
 	}
 
-	input := &s3.ListObjectsV2Input{
+	input := &awss3.ListObjectsV2Input{
 		Bucket: aws.String(f.urlOpts.Bucket),
 		Prefix: aws.String(prefix),
 	}
 
-	paginator := s3.NewListObjectsV2Paginator(f.client, input)
+	paginator := awss3.NewListObjectsV2Paginator(f.client, input)
 	for paginator.HasMorePages() {
 		page, pageErr := paginator.NextPage(context.Background())
 		if pageErr != nil {
@@ -158,7 +158,7 @@ func (f *S3File) ListAll() (files []vfs.VFile, err error) {
 
 // Delete deletes the S3 object.
 func (f *S3File) Delete() error {
-	input := &s3.DeleteObjectInput{
+	input := &awss3.DeleteObjectInput{
 		Bucket: aws.String(f.urlOpts.Bucket),
 		Key:    aws.String(f.urlOpts.Key),
 	}
@@ -202,14 +202,14 @@ func (f *S3File) Info() (vfs.VFileInfo, error) {
 		}, nil
 	}
 
-	input := &s3.HeadObjectInput{
+	input := &awss3.HeadObjectInput{
 		Bucket: aws.String(f.urlOpts.Bucket),
 		Key:    aws.String(f.urlOpts.Key),
 	}
 	result, err := f.client.HeadObject(context.Background(), input)
 	if err != nil {
 		// If HeadObject fails, check if it's a prefix (directory)
-		listInput := &s3.ListObjectsV2Input{
+		listInput := &awss3.ListObjectsV2Input{
 			Bucket:  aws.String(f.urlOpts.Bucket),
 			Prefix:  aws.String(f.urlOpts.Key + textutils.ForwardSlashStr),
 			MaxKeys: aws.Int32(1),
@@ -277,7 +277,7 @@ func (f *S3File) AddProperty(name, value string) error {
 	ctx := context.Background()
 
 	// Get current metadata
-	headInput := &s3.HeadObjectInput{
+	headInput := &awss3.HeadObjectInput{
 		Bucket: aws.String(f.urlOpts.Bucket),
 		Key:    aws.String(f.urlOpts.Key),
 	}
@@ -293,7 +293,7 @@ func (f *S3File) AddProperty(name, value string) error {
 	metadata[name] = value
 
 	copySource := f.urlOpts.Bucket + "/" + f.urlOpts.Key
-	copyInput := &s3.CopyObjectInput{
+	copyInput := &awss3.CopyObjectInput{
 		Bucket:            aws.String(f.urlOpts.Bucket),
 		Key:               aws.String(f.urlOpts.Key),
 		CopySource:        aws.String(copySource),
@@ -311,7 +311,7 @@ func (f *S3File) AddProperty(name, value string) error {
 
 // GetProperty retrieves a metadata value from the S3 object.
 func (f *S3File) GetProperty(name string) (string, error) {
-	input := &s3.HeadObjectInput{
+	input := &awss3.HeadObjectInput{
 		Bucket: aws.String(f.urlOpts.Bucket),
 		Key:    aws.String(f.urlOpts.Key),
 	}

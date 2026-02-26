@@ -8,7 +8,7 @@ import (
 	"strings"
 
 	"oss.nandlabs.io/golly-aws/awscfg"
-	_ "oss.nandlabs.io/golly-aws/s3vfs"
+	_ "oss.nandlabs.io/golly-aws/s3"
 	"oss.nandlabs.io/golly/vfs"
 )
 

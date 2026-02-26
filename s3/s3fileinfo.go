@@ -1,4 +1,4 @@
-package s3vfs
+package s3
 
 import (
 	"fmt"

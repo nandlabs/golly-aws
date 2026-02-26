@@ -1,4 +1,4 @@
-package s3vfs
+package s3
 
 import (
 	"context"
@@ -7,7 +7,7 @@ import (
 	"strings"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
-	"github.com/aws/aws-sdk-go-v2/service/s3"
+	awss3 "github.com/aws/aws-sdk-go-v2/service/s3"
 	"oss.nandlabs.io/golly/textutils"
 	"oss.nandlabs.io/golly/vfs"
 )
@@ -37,7 +37,7 @@ func (fs *S3FS) Create(u *url.URL) (vfs.VFile, error) {
 	}
 
 	// Check if object already exists
-	headInput := &s3.HeadObjectInput{
+	headInput := &awss3.HeadObjectInput{
 		Bucket: aws.String(opts.Bucket),
 		Key:    aws.String(opts.Key),
 	}
@@ -47,7 +47,7 @@ func (fs *S3FS) Create(u *url.URL) (vfs.VFile, error) {
 	}
 
 	// Create empty object
-	putInput := &s3.PutObjectInput{
+	putInput := &awss3.PutObjectInput{
 		Bucket: aws.String(opts.Bucket),
 		Key:    aws.String(opts.Key),
 		Body:   strings.NewReader(""),
@@ -83,7 +83,7 @@ func (fs *S3FS) MkdirAll(u *url.URL) (vfs.VFile, error) {
 		key = key + textutils.ForwardSlashStr
 	}
 
-	putInput := &s3.PutObjectInput{
+	putInput := &awss3.PutObjectInput{
 		Bucket: aws.String(opts.Bucket),
 		Key:    aws.String(key),
 		Body:   strings.NewReader(""),
@@ -123,7 +123,7 @@ func (fs *S3FS) Open(u *url.URL) (vfs.VFile, error) {
 }
 
 // newS3File creates a new S3File instance.
-func newS3File(client *s3.Client, fs *S3FS, opts *urlOpts) *S3File {
+func newS3File(client *awss3.Client, fs *S3FS, opts *urlOpts) *S3File {
 	f := &S3File{
 		client:  client,
 		fs:      fs,
@@ -200,10 +200,10 @@ func (fs *S3FS) Copy(src, dst *url.URL) error {
 }
 
 // copySingleObject copies a single S3 object using server-side copy if same region, otherwise streams.
-func (fs *S3FS) copySingleObject(client *s3.Client, src, dst *urlOpts) error {
+func (fs *S3FS) copySingleObject(client *awss3.Client, src, dst *urlOpts) error {
 	// Use S3 server-side copy
 	copySource := src.Bucket + "/" + src.Key
-	input := &s3.CopyObjectInput{
+	input := &awss3.CopyObjectInput{
 		Bucket:     aws.String(dst.Bucket),
 		Key:        aws.String(dst.Key),
 		CopySource: aws.String(copySource),
@@ -217,8 +217,8 @@ func (fs *S3FS) copySingleObject(client *s3.Client, src, dst *urlOpts) error {
 }
 
 // streamCopy reads from source and writes to destination (for cross-region copies).
-func (fs *S3FS) streamCopy(client *s3.Client, src, dst *urlOpts) error {
-	getInput := &s3.GetObjectInput{
+func (fs *S3FS) streamCopy(client *awss3.Client, src, dst *urlOpts) error {
+	getInput := &awss3.GetObjectInput{
 		Bucket: aws.String(src.Bucket),
 		Key:    aws.String(src.Key),
 	}
@@ -230,7 +230,7 @@ func (fs *S3FS) streamCopy(client *s3.Client, src, dst *urlOpts) error {
 		_ = getResult.Body.Close()
 	}()
 
-	putInput := &s3.PutObjectInput{
+	putInput := &awss3.PutObjectInput{
 		Bucket:      aws.String(dst.Bucket),
 		Key:         aws.String(dst.Key),
 		Body:        getResult.Body,
@@ -279,14 +279,14 @@ func (fs *S3FS) List(u *url.URL) ([]vfs.VFile, error) {
 		prefix = prefix + textutils.ForwardSlashStr
 	}
 
-	input := &s3.ListObjectsV2Input{
+	input := &awss3.ListObjectsV2Input{
 		Bucket:    aws.String(opts.Bucket),
 		Prefix:    aws.String(prefix),
 		Delimiter: aws.String(textutils.ForwardSlashStr),
 	}
 
 	var files []vfs.VFile
-	paginator := s3.NewListObjectsV2Paginator(client, input)
+	paginator := awss3.NewListObjectsV2Paginator(client, input)
 	for paginator.HasMorePages() {
 		page, pageErr := paginator.NextPage(context.Background())
 		if pageErr != nil {
@@ -345,12 +345,12 @@ func (fs *S3FS) Walk(u *url.URL, fn vfs.WalkFn) error {
 		prefix = prefix + textutils.ForwardSlashStr
 	}
 
-	input := &s3.ListObjectsV2Input{
+	input := &awss3.ListObjectsV2Input{
 		Bucket: aws.String(opts.Bucket),
 		Prefix: aws.String(prefix),
 	}
 
-	paginator := s3.NewListObjectsV2Paginator(client, input)
+	paginator := awss3.NewListObjectsV2Paginator(client, input)
 	for paginator.HasMorePages() {
 		page, pageErr := paginator.NextPage(context.Background())
 		if pageErr != nil {
