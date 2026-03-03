@@ -6,6 +6,7 @@ require (
 	github.com/aws/aws-sdk-go-v2 v1.41.2
 	github.com/aws/aws-sdk-go-v2/config v1.32.10
 	github.com/aws/aws-sdk-go-v2/credentials v1.19.10
+	github.com/aws/aws-sdk-go-v2/service/bedrockruntime v1.50.0
 	github.com/aws/aws-sdk-go-v2/service/s3 v1.96.1
 	github.com/aws/aws-sdk-go-v2/service/sns v1.39.12
 	github.com/aws/aws-sdk-go-v2/service/sqs v1.42.22
