@@ -35,27 +35,27 @@ go get oss.nandlabs.io/golly-aws
 
 ### ⚙️ Configuration
 
-| Package                  | Description                                                                              |
-| ------------------------ | ---------------------------------------------------------------------------------------- |
+| Package                    | Description                                                                                           |
+| -------------------------- | ----------------------------------------------------------------------------------------------------- |
 | [awscfg](awscfg/README.md) | Centralized AWS config management with named registry, multi-account/region, and URL-based resolution |
 
 ### 🤖 AI & Intelligence
 
-| Package                      | Description                                                                                      |
-| ---------------------------- | ------------------------------------------------------------------------------------------------ |
+| Package                      | Description                                                                                          |
+| ---------------------------- | ---------------------------------------------------------------------------------------------------- |
 | [bedrock](bedrock/README.md) | AWS Bedrock GenAI provider using the Converse API — supports Claude, Titan, Llama, Mistral, and more |
 
 ### 🗃️ Storage
 
-| Package          | Description                                                                                           |
-| ---------------- | ----------------------------------------------------------------------------------------------------- |
+| Package            | Description                                                                                           |
+| ------------------ | ----------------------------------------------------------------------------------------------------- |
 | [s3](s3/README.md) | S3 implementation of the golly VFS interface — read, write, copy, move, list, walk, and directory ops |
 
 ### 📡 Messaging
 
-| Package            | Description                                                                              |
-| ------------------ | ---------------------------------------------------------------------------------------- |
-| [sns](sns/README.md) | SNS implementation of the golly messaging provider — publish, batch publish, FIFO support |
+| Package              | Description                                                                                 |
+| -------------------- | ------------------------------------------------------------------------------------------- |
+| [sns](sns/README.md) | SNS implementation of the golly messaging provider — publish, batch publish, FIFO support   |
 | [sqs](sqs/README.md) | SQS implementation of the golly messaging provider — send, receive, listeners, FIFO support |
 
 > 📖 Full API documentation available at [pkg.go.dev](https://pkg.go.dev/oss.nandlabs.io/golly-aws)
