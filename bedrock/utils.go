@@ -86,8 +86,8 @@ func extractSystemContent(message *genai.Message, options *genai.Options) []brty
 	// If the message itself is a system role, extract its text parts
 	if message != nil && message.Role == genai.RoleSystem {
 		for _, part := range message.Parts {
-			if part.Text != nil && part.Text.Text != "" {
-				blocks = append(blocks, &brtypes.SystemContentBlockMemberText{Value: part.Text.Text})
+			if part.Text != nil && part.Text.Content != "" {
+				blocks = append(blocks, &brtypes.SystemContentBlockMemberText{Value: part.Text.Content})
 			}
 		}
 	}
@@ -157,7 +157,7 @@ func convertMessage(msg *genai.Message) (brtypes.Message, error) {
 func convertPart(part *genai.Part) (brtypes.ContentBlock, error) {
 	switch {
 	case part.Text != nil:
-		return &brtypes.ContentBlockMemberText{Value: part.Text.Text}, nil
+		return &brtypes.ContentBlockMemberText{Value: part.Text.Content}, nil
 
 	case part.Bin != nil && ioutils.IsImageMime(part.MimeType):
 		format, err := mimeToImageFormat(part.MimeType)
@@ -329,7 +329,7 @@ func bedrockMessageToGenMessage(msg *brtypes.Message) *genai.Message {
 				genMsg.Parts = append(genMsg.Parts, genai.Part{
 					Name:     "text",
 					MimeType: ioutils.MimeTextPlain,
-					Text:     &genai.TextPart{Text: b.Value},
+					Text:     &genai.TextPart{Content: b.Value},
 				})
 			}
 

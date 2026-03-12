@@ -486,8 +486,8 @@ func TestToGenResponse(t *testing.T) {
 	if len(genResp.Candidates[0].Message.Parts) != 1 {
 		t.Fatalf("Parts length = %d, want 1", len(genResp.Candidates[0].Message.Parts))
 	}
-	if genResp.Candidates[0].Message.Parts[0].Text.Text != "Hello! How can I help?" {
-		t.Errorf("text = %q, want %q", genResp.Candidates[0].Message.Parts[0].Text.Text, "Hello! How can I help?")
+	if genResp.Candidates[0].Message.Parts[0].Text.Content != "Hello! How can I help?" {
+		t.Errorf("text = %q, want %q", genResp.Candidates[0].Message.Parts[0].Text.Content, "Hello! How can I help?")
 	}
 }
 
@@ -554,8 +554,8 @@ func TestStreamEventToGenResponse_TextDelta(t *testing.T) {
 	if genResp.Candidates[0].FinishReason != genai.FinishReasonInProgress {
 		t.Errorf("FinishReason = %v, want null (in progress)", genResp.Candidates[0].FinishReason)
 	}
-	if genResp.Candidates[0].Message.Parts[0].Text.Text != "Hello" {
-		t.Errorf("text = %q, want %q", genResp.Candidates[0].Message.Parts[0].Text.Text, "Hello")
+	if genResp.Candidates[0].Message.Parts[0].Text.Content != "Hello" {
+		t.Errorf("text = %q, want %q", genResp.Candidates[0].Message.Parts[0].Text.Content, "Hello")
 	}
 }
 
@@ -747,8 +747,8 @@ func TestGenerate_Success(t *testing.T) {
 	if len(resp.Candidates) != 1 {
 		t.Fatalf("Candidates length = %d, want 1", len(resp.Candidates))
 	}
-	if resp.Candidates[0].Message.Parts[0].Text.Text != "Go is a programming language." {
-		t.Errorf("text = %q, want %q", resp.Candidates[0].Message.Parts[0].Text.Text, "Go is a programming language.")
+	if resp.Candidates[0].Message.Parts[0].Text.Content != "Go is a programming language." {
+		t.Errorf("text = %q, want %q", resp.Candidates[0].Message.Parts[0].Text.Content, "Go is a programming language.")
 	}
 	if resp.Meta.InputTokens != 10 {
 		t.Errorf("InputTokens = %d, want 10", resp.Meta.InputTokens)
@@ -826,7 +826,7 @@ func TestBedrockMessageToGenMessage_Text(t *testing.T) {
 	if len(genMsg.Parts) != 1 {
 		t.Fatalf("Parts length = %d, want 1", len(genMsg.Parts))
 	}
-	if genMsg.Parts[0].Text == nil || genMsg.Parts[0].Text.Text != "Hello!" {
+	if genMsg.Parts[0].Text == nil || genMsg.Parts[0].Text.Content != "Hello!" {
 		t.Error("expected text part with 'Hello!'")
 	}
 }

@@ -10,7 +10,7 @@ require (
 	github.com/aws/aws-sdk-go-v2/service/s3 v1.96.1
 	github.com/aws/aws-sdk-go-v2/service/sns v1.39.12
 	github.com/aws/aws-sdk-go-v2/service/sqs v1.42.22
-	oss.nandlabs.io/golly v1.3.0
+	oss.nandlabs.io/golly v1.4.0
 )
 
 require (

@@ -44,5 +44,5 @@ github.com/aws/smithy-go v1.24.1 h1:VbyeNfmYkWoxMVpGUAbQumkODcYmfMRfZ8yQiH30SK0=
 github.com/aws/smithy-go v1.24.1/go.mod h1:LEj2LM3rBRQJxPZTB4KuzZkaZYnZPnvgIhb4pu07mx0=
 github.com/goccy/go-yaml v1.19.2 h1:PmFC1S6h8ljIz6gMRBopkjP1TVT7xuwrButHID66PoM=
 github.com/goccy/go-yaml v1.19.2/go.mod h1:XBurs7gK8ATbW4ZPGKgcbrY1Br56PdM69F7LkFRi1kA=
-oss.nandlabs.io/golly v1.3.0 h1:iuf/HjpRp0RR1GP+QoEBBICqlivXqbdfdQ60epM//4U=
-oss.nandlabs.io/golly v1.3.0/go.mod h1:Y97nuDQKtl64imdYPQIOpkbsMOpgBUxX+yQVJQSZ1Zw=
+oss.nandlabs.io/golly v1.4.0 h1:tN//uHvR4QHfIakFs3UBjP58VohFmgBI0eOL/1Q5y4M=
+oss.nandlabs.io/golly v1.4.0/go.mod h1:Y97nuDQKtl64imdYPQIOpkbsMOpgBUxX+yQVJQSZ1Zw=
