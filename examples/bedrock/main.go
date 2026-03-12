@@ -96,7 +96,7 @@ for the country Japan. Only return the JSON, no other text.`)
 			if c.Message != nil {
 				for _, p := range c.Message.Parts {
 					if p.Text != nil {
-						fmt.Print(p.Text.Text)
+						fmt.Print(p.Text.Content)
 						streamTokens++
 					}
 				}
@@ -149,12 +149,12 @@ for the country Japan. Only return the JSON, no other text.`)
 			{
 				Name:     "context",
 				MimeType: "text/plain",
-				Text:     &genai.TextPart{Text: "The Eiffel Tower was built for the 1889 World's Fair in Paris."},
+				Text:     &genai.TextPart{Content: "The Eiffel Tower was built for the 1889 World's Fair in Paris."},
 			},
 			{
 				Name:     "question",
 				MimeType: "text/plain",
-				Text:     &genai.TextPart{Text: "When was the Eiffel Tower built and for what event?"},
+				Text:     &genai.TextPart{Content: "When was the Eiffel Tower built and for what event?"},
 			},
 		},
 	}
@@ -186,7 +186,7 @@ func printResponse(label string, resp *genai.GenResponse) {
 		if c.Message != nil {
 			for _, p := range c.Message.Parts {
 				if p.Text != nil {
-					text := p.Text.Text
+					text := p.Text.Content
 					if len(text) > 300 {
 						text = text[:300] + "..."
 					}
