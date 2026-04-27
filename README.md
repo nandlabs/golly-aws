@@ -23,7 +23,7 @@
 
 ## Overview
 
-Golly AWS provides AWS service implementations for core [Golly](https://github.com/nandlabs/golly) interfaces — VFS, Messaging, and GenAI. It uses the [AWS SDK for Go v2](https://github.com/aws/aws-sdk-go-v2) and follows Golly's provider pattern: blank-import a package to auto-register it, then use standard Golly managers with `s3://`, `sqs://`, or `sns://` URLs.
+Golly AWS provides AWS service implementations for core [Golly](https://github.com/nandlabs/golly) interfaces — VFS, Messaging, GenAI, and Secrets. It uses the [AWS SDK for Go v2](https://github.com/aws/aws-sdk-go-v2) and follows Golly's provider pattern: blank-import a package to auto-register it, then use standard Golly managers with `s3://`, `sqs://`, or `sns://` URLs.
 
 ## Installation
 
@@ -51,7 +51,13 @@ go get oss.nandlabs.io/golly-aws
 | ------------------ | ----------------------------------------------------------------------------------------------------- |
 | [s3](s3/README.md) | S3 implementation of the golly VFS interface — read, write, copy, move, list, walk, and directory ops |
 
-### 📡 Messaging
+### � Secrets
+
+| Package                      | Description                                                                                              |
+| ---------------------------- | -------------------------------------------------------------------------------------------------------- |
+| [secrets](secrets/README.md) | AWS Secrets Manager implementation of the golly secrets store — get, write, delete, list with caching    |
+
+### �📡 Messaging
 
 | Package              | Description                                                                                 |
 | -------------------- | ------------------------------------------------------------------------------------------- |
