@@ -9,7 +9,7 @@ require (
 	github.com/aws/aws-sdk-go-v2/service/bedrockruntime v1.50.5
 	github.com/aws/aws-sdk-go-v2/service/s3 v1.100.0
 	github.com/aws/aws-sdk-go-v2/service/secretsmanager v1.41.6
-	github.com/aws/aws-sdk-go-v2/service/sns v1.39.16
+	github.com/aws/aws-sdk-go-v2/service/sns v1.39.17
 	github.com/aws/aws-sdk-go-v2/service/sqs v1.42.26
 	oss.nandlabs.io/golly v1.5.0
 )
