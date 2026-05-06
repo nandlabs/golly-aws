@@ -27,10 +27,26 @@ Golly AWS provides AWS service implementations for core [Golly](https://github.c
 
 ## Compatibility
 
+### Version Matrix
+
 | golly-aws | golly  | AWS SDK v2 |
 | --------- | ------ | ---------- |
 | v0.3.0    | v1.5.0 | v1.41.6    |
 | v0.2.0    | v1.4.0 | v1.41.2    |
+
+### AWS SDK v2 Dependencies
+
+| Package                                | Version |
+| -------------------------------------- | ------- |
+| aws-sdk-go-v2                          | v1.41.7 |
+| aws-sdk-go-v2/config                   | v1.32.17 |
+| aws-sdk-go-v2/credentials              | v1.19.16 |
+| aws-sdk-go-v2/service/bedrockruntime   | v1.50.5 |
+| aws-sdk-go-v2/service/s3               | v1.101.0 |
+| aws-sdk-go-v2/service/secretsmanager   | v1.41.7 |
+| aws-sdk-go-v2/service/sns              | v1.39.17 |
+| aws-sdk-go-v2/service/sqs              | v1.42.27 |
+| aws/smithy-go                          | v1.25.1 |
 
 ## Installation
 
