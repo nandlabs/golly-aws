@@ -10,7 +10,7 @@ require (
 	github.com/aws/aws-sdk-go-v2/service/s3 v1.101.0
 	github.com/aws/aws-sdk-go-v2/service/secretsmanager v1.41.7
 	github.com/aws/aws-sdk-go-v2/service/sns v1.39.16
-	github.com/aws/aws-sdk-go-v2/service/sqs v1.42.26
+	github.com/aws/aws-sdk-go-v2/service/sqs v1.42.27
 	oss.nandlabs.io/golly v1.5.0
 )
 
