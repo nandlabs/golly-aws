@@ -29,13 +29,14 @@ Golly AWS provides AWS service implementations for core [Golly](https://github.c
 
 | golly-aws | golly  | AWS SDK v2 |
 | --------- | ------ | ---------- |
+| v0.3.1    | v1.5.1 | v1.41.7    |
 | v0.3.0    | v1.5.0 | v1.41.6    |
 | v0.2.0    | v1.4.0 | v1.41.2    |
 
 ## Installation
 
 ```bash
-go get oss.nandlabs.io/golly-aws@v0.3.0
+go get oss.nandlabs.io/golly-aws@v0.3.1
 ```
 
 ## Packages
