@@ -50,3 +50,5 @@ golang.org/x/sys v0.45.0 h1:dO4czNzziLiiXplLQgBCEpCvXQ3dnkn0SdaZSYdQ+FY=
 golang.org/x/sys v0.45.0/go.mod h1:4GL1E5IUh+htKOUEOaiffhrAeqysfVGipDYzABqnCmw=
 oss.nandlabs.io/golly v1.5.1 h1:08RD90W8GJKd48xM5vq8ZuTWYBCl6FplWtijF1K8Rx8=
 oss.nandlabs.io/golly v1.5.1/go.mod h1:MOpWwT8vzyROsy4hoFl71FyYbqtyDK0GxU1D8xh9PzM=
+oss.nandlabs.io/golly v1.5.2-0.20260628120322-6c303ede2b6d h1:jBf8V5Je6L/Od8kK1rrT+rDHgviNhtnjjAcCu3fE9Mk=
+oss.nandlabs.io/golly v1.5.2-0.20260628120322-6c303ede2b6d/go.mod h1:MOpWwT8vzyROsy4hoFl71FyYbqtyDK0GxU1D8xh9PzM=
