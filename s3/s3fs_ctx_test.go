@@ -18,3 +18,17 @@ import (
 func TestS3FS_ImplementsVFileSystemCtx(t *testing.T) {
 	var _ vfs.VFileSystemCtx = (*S3FS)(nil)
 }
+
+// TestS3FS_ImplementsLister guarantees vfs.ListIter dispatches through
+// S3FS.ListIter rather than falling back to the eager List slice (which
+// would materialize million-key prefixes into one allocation).
+func TestS3FS_ImplementsLister(t *testing.T) {
+	var _ vfs.Lister = (*S3FS)(nil)
+}
+
+// TestS3File_ImplementsRangeReader guarantees vfs.ReadRange dispatches
+// to a native S3 ranged GET instead of Seek+Read (which on cloud
+// backends typically downloads the whole object).
+func TestS3File_ImplementsRangeReader(t *testing.T) {
+	var _ vfs.RangeReader = (*S3File)(nil)
+}

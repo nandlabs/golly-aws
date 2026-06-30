@@ -11,7 +11,7 @@ require (
 	github.com/aws/aws-sdk-go-v2/service/secretsmanager v1.41.7
 	github.com/aws/aws-sdk-go-v2/service/sns v1.39.17
 	github.com/aws/aws-sdk-go-v2/service/sqs v1.42.27
-	oss.nandlabs.io/golly v1.5.2-0.20260628120322-6c303ede2b6d
+	oss.nandlabs.io/golly v1.5.2-0.20260629140503-7be1edb5f58b
 )
 
 require (

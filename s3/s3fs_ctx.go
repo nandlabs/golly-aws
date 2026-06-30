@@ -2,6 +2,7 @@ package s3
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net/url"
 	"strings"
@@ -212,6 +213,15 @@ func (fs *S3FS) WalkCtx(ctx context.Context, u *url.URL, fn vfs.WalkFn) error {
 				return openErr
 			}
 			if walkErr := fn(child); walkErr != nil {
+				if errors.Is(walkErr, vfs.ErrSkipAll) {
+					return nil
+				}
+				if errors.Is(walkErr, vfs.ErrSkipDir) {
+					// S3 has no real directories — at this level the
+					// flat object listing has no children to skip, so
+					// the sentinel behaves the same as continue.
+					continue
+				}
 				return walkErr
 			}
 		}
