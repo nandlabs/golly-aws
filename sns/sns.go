@@ -78,6 +78,14 @@ func (p *Provider) Send(u *url.URL, msg messaging.Message, options ...messaging.
 
 	optResolver := messaging.NewOptionsResolver(options...)
 
+	// Validate broker-targeted options (golly v1.6.0) before touching AWS.
+	// SNS is publish-only; most broker options either map to publisher
+	// semantics (DeliveryGuarantee) or are rejected here with a clear
+	// message pointing at the correct configuration surface.
+	if err := parseBrokerOptions(optResolver); err != nil {
+		return err
+	}
+
 	input := &sns.PublishInput{
 		Message: strPtr(msg.ReadAsStr()),
 	}
@@ -151,6 +159,11 @@ func (p *Provider) SendBatch(u *url.URL, msgs []messaging.Message, options ...me
 	}
 
 	optResolver := messaging.NewOptionsResolver(options...)
+
+	// Validate broker-targeted options (golly v1.6.0) once, before batching.
+	if err := parseBrokerOptions(optResolver); err != nil {
+		return err
+	}
 
 	const maxBatchSize = 10
 	for i := 0; i < len(msgs); i += maxBatchSize {
