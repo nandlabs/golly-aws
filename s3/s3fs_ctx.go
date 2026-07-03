@@ -50,7 +50,7 @@ func (fs *S3FS) CreateCtx(ctx context.Context, u *url.URL) (vfs.VFile, error) {
 		Key:    aws.String(opts.Key),
 		Body:   strings.NewReader(""),
 	}); err != nil {
-		return nil, err
+		return nil, mapS3Err(err)
 	}
 	return newS3File(client, fs, opts), nil
 }
@@ -74,7 +74,7 @@ func (fs *S3FS) MkdirAllCtx(ctx context.Context, u *url.URL) (vfs.VFile, error) 
 		Key:    aws.String(key),
 		Body:   strings.NewReader(""),
 	}); err != nil {
-		return nil, err
+		return nil, mapS3Err(err)
 	}
 	dirOpts := &urlOpts{
 		u: &url.URL{
@@ -117,7 +117,7 @@ func (fs *S3FS) DeleteCtx(ctx context.Context, src *url.URL) error {
 		Bucket: aws.String(srcOpts.Bucket),
 		Key:    aws.String(srcOpts.Key),
 	}); err != nil {
-		return err
+		return mapS3Err(err)
 	}
 	return nil
 }
@@ -145,7 +145,7 @@ func (fs *S3FS) ListCtx(ctx context.Context, u *url.URL) ([]vfs.VFile, error) {
 	for paginator.HasMorePages() {
 		page, pageErr := paginator.NextPage(ctx)
 		if pageErr != nil {
-			return nil, pageErr
+			return nil, mapS3Err(pageErr)
 		}
 		for _, obj := range page.Contents {
 			key := aws.ToString(obj.Key)
@@ -199,7 +199,7 @@ func (fs *S3FS) WalkCtx(ctx context.Context, u *url.URL, fn vfs.WalkFn) error {
 		}
 		page, pageErr := paginator.NextPage(ctx)
 		if pageErr != nil {
-			return pageErr
+			return mapS3Err(pageErr)
 		}
 		for _, obj := range page.Contents {
 			key := aws.ToString(obj.Key)

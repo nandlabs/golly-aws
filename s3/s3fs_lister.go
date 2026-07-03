@@ -78,7 +78,7 @@ func (it *s3FileIterator) Next(ctx context.Context) (vfs.VFile, error) {
 		}
 		page, err := it.paginator.NextPage(ctx)
 		if err != nil {
-			return nil, err
+			return nil, mapS3Err(err)
 		}
 		for _, obj := range page.Contents {
 			key := aws.ToString(obj.Key)
