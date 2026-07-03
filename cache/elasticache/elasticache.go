@@ -16,6 +16,7 @@ import (
 	"crypto/tls"
 	"errors"
 	"fmt"
+	"sync"
 	"time"
 
 	"github.com/redis/go-redis/v9"
@@ -67,12 +68,25 @@ type Config struct {
 // Client is a cache.Cache[string, []byte] backed by ElastiCache for Redis.
 // Values are stored as raw bytes; pair with a typed wrapper (or codec)
 // at the call site for richer values.
+//
+// Client also satisfies the optional cache.Sweeper and cache.Loader
+// capability interfaces (see capabilities.go).
 type Client struct {
 	rdb redis.UniversalClient
+
+	// flightMu guards flights. In-process single-flight coordination for
+	// GetOrLoad; see capabilities.go.
+	flightMu sync.Mutex
+	flights  map[string]*flightCall
 }
 
-// Compile-time check that Client satisfies cache.Cache[string, []byte].
-var _ cache.Cache[string, []byte] = (*Client)(nil)
+// Compile-time check that Client satisfies cache.Cache[string, []byte]
+// and the optional Sweeper + Loader capability interfaces.
+var (
+	_ cache.Cache[string, []byte]  = (*Client)(nil)
+	_ cache.Sweeper                = (*Client)(nil)
+	_ cache.Loader[string, []byte] = (*Client)(nil)
+)
 
 // ErrInvalidConfig is returned by New when Config is unusable.
 var ErrInvalidConfig = errors.New("elasticache: invalid config")
@@ -116,7 +130,10 @@ func New(cfg *Config) (*Client, error) {
 		}
 	}
 
-	return &Client{rdb: redis.NewUniversalClient(opts)}, nil
+	return &Client{
+		rdb:     redis.NewUniversalClient(opts),
+		flights: make(map[string]*flightCall),
+	}, nil
 }
 
 // Ping verifies connectivity by issuing a Redis PING. Useful right after

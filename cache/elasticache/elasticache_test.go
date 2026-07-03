@@ -2,6 +2,9 @@ package elasticache
 
 import (
 	"context"
+	"errors"
+	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -122,6 +125,131 @@ func TestClient_PingValidatesConnection(t *testing.T) {
 	c, _ := withMiniRedis(t)
 	if err := c.Ping(context.Background()); err != nil {
 		t.Fatalf("Ping: %v", err)
+	}
+}
+
+// --- Sweeper capability -----------------------------------------------------
+
+func TestSweep_ReturnsZero(t *testing.T) {
+	c, _ := withMiniRedis(t)
+	// Seed some keys — Redis handles TTL server-side so Sweep is a no-op
+	// regardless of contents.
+	_ = c.SetWithTTL(context.Background(), "expiring", []byte("v"), time.Millisecond)
+	_ = c.Set(context.Background(), "persistent", []byte("v"))
+	if n := c.Sweep(); n != 0 {
+		t.Fatalf("Sweep() = %d, want 0 (Redis handles expiry itself)", n)
+	}
+}
+
+// --- Loader capability ------------------------------------------------------
+
+func TestGetOrLoad_MissThenLoads(t *testing.T) {
+	c, _ := withMiniRedis(t)
+	ctx := context.Background()
+
+	var called int32
+	got, err := c.GetOrLoad(ctx, "k", time.Minute, func(ctx context.Context) ([]byte, error) {
+		atomic.AddInt32(&called, 1)
+		return []byte("loaded"), nil
+	})
+	if err != nil {
+		t.Fatalf("GetOrLoad: %v", err)
+	}
+	if string(got) != "loaded" {
+		t.Fatalf("GetOrLoad value = %q, want %q", got, "loaded")
+	}
+	if n := atomic.LoadInt32(&called); n != 1 {
+		t.Fatalf("load invoked %d times, want 1", n)
+	}
+	// Result must have been cached.
+	cached, ok := c.Get(ctx, "k")
+	if !ok || string(cached) != "loaded" {
+		t.Fatalf("cache after GetOrLoad = (%q, %v), want (%q, true)", cached, ok, "loaded")
+	}
+}
+
+func TestGetOrLoad_HitSkipsLoad(t *testing.T) {
+	c, _ := withMiniRedis(t)
+	ctx := context.Background()
+
+	if err := c.Set(ctx, "k", []byte("prewarmed")); err != nil {
+		t.Fatalf("Set: %v", err)
+	}
+
+	var called int32
+	got, err := c.GetOrLoad(ctx, "k", time.Minute, func(ctx context.Context) ([]byte, error) {
+		atomic.AddInt32(&called, 1)
+		return []byte("SHOULD-NOT-RUN"), nil
+	})
+	if err != nil {
+		t.Fatalf("GetOrLoad: %v", err)
+	}
+	if string(got) != "prewarmed" {
+		t.Fatalf("value = %q, want %q (load must not run on hit)", got, "prewarmed")
+	}
+	if n := atomic.LoadInt32(&called); n != 0 {
+		t.Fatalf("load invoked %d times on cache hit, want 0", n)
+	}
+}
+
+func TestGetOrLoad_LoadErrorPropagates(t *testing.T) {
+	c, _ := withMiniRedis(t)
+	ctx := context.Background()
+
+	sentinel := errors.New("upstream boom")
+	got, err := c.GetOrLoad(ctx, "err-key", time.Minute, func(ctx context.Context) ([]byte, error) {
+		return nil, sentinel
+	})
+	if !errors.Is(err, sentinel) {
+		t.Fatalf("err = %v, want (Is) %v — must propagate unwrapped", err, sentinel)
+	}
+	if got != nil {
+		t.Fatalf("value on load error = %q, want nil", got)
+	}
+	if c.Has(ctx, "err-key") {
+		t.Fatalf("key should not be cached when load errors")
+	}
+}
+
+func TestGetOrLoad_SingleFlight_Concurrent(t *testing.T) {
+	c, _ := withMiniRedis(t)
+	ctx := context.Background()
+
+	const N = 32
+	var called int32
+	var wg sync.WaitGroup
+	start := make(chan struct{})
+	results := make([][]byte, N)
+
+	for i := 0; i < N; i++ {
+		wg.Add(1)
+		go func(i int) {
+			defer wg.Done()
+			<-start
+			v, err := c.GetOrLoad(ctx, "herd", time.Minute, func(ctx context.Context) ([]byte, error) {
+				atomic.AddInt32(&called, 1)
+				// Widen the race window so concurrent callers pile up on
+				// the same flight.
+				time.Sleep(30 * time.Millisecond)
+				return []byte("winner"), nil
+			})
+			if err != nil {
+				t.Errorf("GetOrLoad: %v", err)
+				return
+			}
+			results[i] = v
+		}(i)
+	}
+	close(start)
+	wg.Wait()
+
+	if n := atomic.LoadInt32(&called); n != 1 {
+		t.Fatalf("load invoked %d times under concurrent misses, want exactly 1", n)
+	}
+	for i, r := range results {
+		if string(r) != "winner" {
+			t.Fatalf("goroutine %d saw %q, want %q", i, r, "winner")
+		}
 	}
 }
 
