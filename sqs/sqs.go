@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"net/url"
-	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -50,6 +49,10 @@ type sqsAPI interface {
 	DeleteMessage(ctx context.Context, params *sqs.DeleteMessageInput, optFns ...func(*sqs.Options)) (*sqs.DeleteMessageOutput, error)
 	ChangeMessageVisibility(ctx context.Context, params *sqs.ChangeMessageVisibilityInput, optFns ...func(*sqs.Options)) (*sqs.ChangeMessageVisibilityOutput, error)
 	GetQueueUrl(ctx context.Context, params *sqs.GetQueueUrlInput, optFns ...func(*sqs.Options)) (*sqs.GetQueueUrlOutput, error)
+	// GetQueueAttributes lets the broker-options plumbing verify a
+	// queue's RedrivePolicy against DeadLetter / MaxDeliveryAttempts
+	// without going through queueAttributesGetter separately.
+	GetQueueAttributes(ctx context.Context, params *sqs.GetQueueAttributesInput, optFns ...func(*sqs.Options)) (*sqs.GetQueueAttributesOutput, error)
 }
 
 // resolveClient returns an SQS API client and the resolved queue URL for u.
@@ -68,11 +71,22 @@ var resolveClient = func(u *url.URL) (sqsAPI, string, error) {
 	return client, queueURL, nil
 }
 
+// sqsListenerEntry tracks a single registered listener so it can be
+// individually cancelled by name via RemoveNamedListener, or as part of
+// a per-host group via RemoveListeners.
+type sqsListenerEntry struct {
+	name   string // empty for unnamed listeners
+	cancel context.CancelFunc
+}
+
 // Provider implements the messaging.Provider interface for AWS SQS.
+// It also implements messaging.ListenerRemover so callers can detach
+// previously-registered listeners by URL or by named group without
+// closing the entire provider.
 type Provider struct {
-	closed  atomic.Bool
-	mu      sync.Mutex
-	stopFns []context.CancelFunc // cancel functions for active listeners
+	closed    atomic.Bool
+	mu        sync.Mutex
+	listeners map[string][]sqsListenerEntry // host → registered listeners
 
 	obsMu    sync.RWMutex
 	observer messaging.Observer
@@ -143,12 +157,6 @@ func (p *Provider) fireOnReceive(u *url.URL, msg messaging.Message, err error) {
 	}
 }
 
-// isFIFOQueue reports whether the resolved queue URL targets a FIFO queue.
-// SQS FIFO queues always end in the ".fifo" suffix.
-func isFIFOQueue(queueURL string) bool {
-	return strings.HasSuffix(queueURL, ".fifo")
-}
-
 // resolveGroupId returns the MessageGroupId to attach to a Send on the given
 // queue. Rules:
 //   - Explicit OptMessageGroupId option → always wins (preserves the prior
@@ -200,6 +208,14 @@ func (p *Provider) SendCtx(ctx context.Context, u *url.URL, msg messaging.Messag
 
 	// Apply options
 	optResolver := messaging.NewOptionsResolver(options...)
+
+	// Validate broker-targeted options (golly v1.6.0) before touching AWS.
+	// On the send path we only need parse-time validation — DLQ / redrive
+	// checks are receive-side and run in AddListener / ReceiveBatch.
+	if _, err := parseBrokerOptions(optResolver, isFIFOQueue(u.Host)); err != nil {
+		return err
+	}
+
 	var explicitGroupId *string
 	if v, ok := optResolver.Get(OptMessageGroupId); ok {
 		groupId := v.(string)
@@ -263,6 +279,11 @@ func (p *Provider) SendBatchCtx(ctx context.Context, u *url.URL, msgs []messagin
 	if v, ok := optResolver.Get(OptDelaySeconds); ok {
 		d := int32(v.(int))
 		explicitDelay = &d
+	}
+
+	// Validate broker-targeted options (golly v1.6.0) before batching.
+	if _, err := parseBrokerOptions(optResolver, isFIFOQueue(u.Host)); err != nil {
+		return err
 	}
 
 	// SQS limit is 10 messages per batch
@@ -346,6 +367,21 @@ func (p *Provider) ReceiveCtx(ctx context.Context, u *url.URL, options ...messag
 	}
 
 	optResolver := messaging.NewOptionsResolver(options...)
+
+	// Broker-targeted options (golly v1.6.0). AckTimeout populates
+	// VisibilityTimeout as a base; the SQS-specific OptVisibilityTimeout
+	// takes precedence below when both are set.
+	bo, err := parseBrokerOptions(optResolver, isFIFOQueue(u.Host))
+	if err != nil {
+		return nil, err
+	}
+	if bo.hasVisibilityTimeout {
+		input.VisibilityTimeout = bo.visibilityTimeout
+	}
+	if err := bo.validateRedrivePolicy(context.Background(), client, queueURL); err != nil {
+		return nil, err
+	}
+
 	if v, ok := optResolver.Get(OptWaitTimeSeconds); ok {
 		input.WaitTimeSeconds = int32(v.(int))
 	} else {
@@ -388,6 +424,15 @@ func (p *Provider) ReceiveBatchCtx(ctx context.Context, u *url.URL, options ...m
 
 	optResolver := messaging.NewOptionsResolver(options...)
 
+	// Broker-targeted options (golly v1.6.0).
+	bo, err := parseBrokerOptions(optResolver, isFIFOQueue(u.Host))
+	if err != nil {
+		return nil, err
+	}
+	if err := bo.validateRedrivePolicy(context.Background(), client, queueURL); err != nil {
+		return nil, err
+	}
+
 	maxMessages := int32(10)
 	if v, ok := optResolver.Get(OptBatchSize); ok {
 		maxMessages = int32(v.(int))
@@ -405,6 +450,9 @@ func (p *Provider) ReceiveBatchCtx(ctx context.Context, u *url.URL, options ...m
 		MessageAttributeNames: []string{"All"},
 	}
 
+	if bo.hasVisibilityTimeout {
+		input.VisibilityTimeout = bo.visibilityTimeout
+	}
 	if v, ok := optResolver.Get(OptWaitTimeSeconds); ok {
 		input.WaitTimeSeconds = int32(v.(int))
 	} else {
@@ -452,12 +500,26 @@ func (p *Provider) AddListenerCtx(ctx context.Context, u *url.URL, listener func
 
 	optResolver := messaging.NewOptionsResolver(options...)
 
+	// Broker-targeted options (golly v1.6.0). Parse + validate before we
+	// spawn the listener goroutine — an invalid combination should surface
+	// synchronously to the caller, not asynchronously via a log line.
+	bo, err := parseBrokerOptions(optResolver, isFIFOQueue(u.Host))
+	if err != nil {
+		return err
+	}
+	if err := bo.validateRedrivePolicy(context.Background(), client, queueURL); err != nil {
+		return err
+	}
+
 	waitTime := int32(5)
 	if v, ok := optResolver.Get(OptWaitTimeSeconds); ok {
 		waitTime = int32(v.(int))
 	}
 
 	var visibilityTimeout int32
+	if bo.hasVisibilityTimeout {
+		visibilityTimeout = bo.visibilityTimeout
+	}
 	if v, ok := optResolver.Get(OptVisibilityTimeout); ok {
 		visibilityTimeout = int32(v.(int))
 	}
@@ -468,8 +530,18 @@ func (p *Provider) AddListenerCtx(ctx context.Context, u *url.URL, listener func
 		pollCtx, cancel = context.WithTimeout(ctx, timeout)
 	}
 
+	// Recognise the same "NamedListener" option that golly's LocalProvider
+	// uses so RemoveNamedListener works consistently across providers.
+	var listenerName string
+	if v, ok := messaging.ResolveOptValue[string]("NamedListener", optResolver); ok {
+		listenerName = v
+	}
+
 	p.mu.Lock()
-	p.stopFns = append(p.stopFns, cancel)
+	if p.listeners == nil {
+		p.listeners = make(map[string][]sqsListenerEntry)
+	}
+	p.listeners[u.Host] = append(p.listeners[u.Host], sqsListenerEntry{name: listenerName, cancel: cancel})
 	p.mu.Unlock()
 
 	go func() {
@@ -524,10 +596,56 @@ func (p *Provider) Close() error {
 	p.closed.Store(true)
 	p.mu.Lock()
 	defer p.mu.Unlock()
-	for _, cancel := range p.stopFns {
-		cancel()
+	for _, entries := range p.listeners {
+		for _, e := range entries {
+			e.cancel()
+		}
 	}
-	p.stopFns = nil
+	p.listeners = nil
+	return nil
+}
+
+// RemoveListeners cancels every listener registered for the URL. Other
+// URLs are untouched. Idempotent — returns nil if no listeners are
+// registered for the URL. Implements messaging.ListenerRemover.
+func (p *Provider) RemoveListeners(u *url.URL) error {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	entries, ok := p.listeners[u.Host]
+	if !ok {
+		return nil
+	}
+	for _, e := range entries {
+		e.cancel()
+	}
+	delete(p.listeners, u.Host)
+	return nil
+}
+
+// RemoveNamedListener cancels listeners registered under the given name
+// for the URL. Other listeners on the same URL (including unnamed)
+// continue to receive. Idempotent.
+// Implements messaging.ListenerRemover.
+func (p *Provider) RemoveNamedListener(u *url.URL, name string) error {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	entries, ok := p.listeners[u.Host]
+	if !ok {
+		return nil
+	}
+	kept := entries[:0]
+	for _, e := range entries {
+		if e.name == name {
+			e.cancel()
+			continue
+		}
+		kept = append(kept, e)
+	}
+	if len(kept) == 0 {
+		delete(p.listeners, u.Host)
+	} else {
+		p.listeners[u.Host] = kept
+	}
 	return nil
 }
 

@@ -2,6 +2,7 @@ package bedrock
 
 import (
 	"encoding/base64"
+	"encoding/json"
 	"fmt"
 	"strings"
 
@@ -39,6 +40,13 @@ func buildConverseInput(model string, message *genai.Message, options *genai.Opt
 		if cfg := buildInferenceConfig(options); cfg != nil {
 			input.InferenceConfig = cfg
 		}
+		toolCfg, err := buildToolConfig(options)
+		if err != nil {
+			return nil, err
+		}
+		if toolCfg != nil {
+			input.ToolConfig = toolCfg
+		}
 	}
 
 	return input, nil
@@ -67,9 +75,117 @@ func buildConverseStreamInput(model string, message *genai.Message, options *gen
 		if cfg := buildInferenceConfig(options); cfg != nil {
 			input.InferenceConfig = cfg
 		}
+		toolCfg, err := buildToolConfig(options)
+		if err != nil {
+			return nil, err
+		}
+		if toolCfg != nil {
+			input.ToolConfig = toolCfg
+		}
 	}
 
 	return input, nil
+}
+
+// buildToolConfig translates genai Tools / ToolChoice into a Bedrock ToolConfiguration.
+// Returns (nil, nil) when the request should carry no ToolConfig — either because
+// no tools were declared, or because the caller pinned ToolChoiceNone.
+//
+// The genai Tool.Function.Parameters (*data.Schema) is round-tripped through JSON
+// into a map[string]any and then wrapped in a document.NewLazyDocument so Bedrock
+// receives it as the JSON-Schema tool input schema.
+func buildToolConfig(options *genai.Options) (*brtypes.ToolConfiguration, error) {
+	tools := options.GetTools()
+	choice := options.GetToolChoice()
+
+	// ToolChoiceNone forbids tool calls — omit ToolConfig entirely.
+	if choice != nil && choice.Mode == genai.ToolChoiceNone {
+		return nil, nil
+	}
+	if len(tools) == 0 {
+		return nil, nil
+	}
+
+	brTools := make([]brtypes.Tool, 0, len(tools))
+	for i, t := range tools {
+		if t.Function == nil {
+			return nil, fmt.Errorf("tool[%d] has no Function declaration", i)
+		}
+		schemaMap, err := schemaToMap(t.Function.Parameters)
+		if err != nil {
+			return nil, fmt.Errorf("tool[%d] (%s) input schema: %w", i, t.Function.Name, err)
+		}
+		spec := brtypes.ToolSpecification{
+			Name:        aws.String(t.Function.Name),
+			InputSchema: &brtypes.ToolInputSchemaMemberJson{Value: document.NewLazyDocument(schemaMap)},
+		}
+		if t.Function.Description != "" {
+			spec.Description = aws.String(t.Function.Description)
+		}
+		brTools = append(brTools, &brtypes.ToolMemberToolSpec{Value: spec})
+	}
+
+	cfg := &brtypes.ToolConfiguration{Tools: brTools}
+	if choice != nil {
+		brChoice, err := toolChoiceToBedrock(choice)
+		if err != nil {
+			return nil, err
+		}
+		cfg.ToolChoice = brChoice
+	}
+	return cfg, nil
+}
+
+// toolChoiceToBedrock maps a genai ToolChoice into the corresponding Bedrock union
+// variant. ToolChoiceNone is not returned here — callers should omit ToolConfig.
+func toolChoiceToBedrock(choice *genai.ToolChoice) (brtypes.ToolChoice, error) {
+	switch choice.Mode {
+	case genai.ToolChoiceAuto:
+		return &brtypes.ToolChoiceMemberAuto{Value: brtypes.AutoToolChoice{}}, nil
+	case genai.ToolChoiceRequired:
+		return &brtypes.ToolChoiceMemberAny{Value: brtypes.AnyToolChoice{}}, nil
+	case genai.ToolChoiceNamed:
+		if choice.Name == "" {
+			return nil, fmt.Errorf("named tool choice requires a non-empty Name")
+		}
+		return &brtypes.ToolChoiceMemberTool{
+			Value: brtypes.SpecificToolChoice{Name: aws.String(choice.Name)},
+		}, nil
+	case genai.ToolChoiceNone:
+		// Callers of buildToolConfig short-circuit on None; guard anyway.
+		return nil, nil
+	default:
+		return nil, fmt.Errorf("unsupported tool choice mode: %q", choice.Mode)
+	}
+}
+
+// schemaToMap converts a *data.Schema into a plain map[string]any suitable for
+// wrapping in a Bedrock document.Interface. A nil schema produces an empty
+// object schema so Bedrock's "top level must be object" requirement is met.
+func schemaToMap(schema any) (map[string]any, error) {
+	if schema == nil {
+		return map[string]any{"type": "object"}, nil
+	}
+	// data.Schema is JSON-Schema shaped; marshal-and-unmarshal is the simplest
+	// robust path and avoids reaching into every field.
+	raw, err := json.Marshal(schema)
+	if err != nil {
+		return nil, err
+	}
+	if len(raw) == 0 || string(raw) == "null" {
+		return map[string]any{"type": "object"}, nil
+	}
+	var m map[string]any
+	if err := json.Unmarshal(raw, &m); err != nil {
+		return nil, err
+	}
+	if m == nil {
+		return map[string]any{"type": "object"}, nil
+	}
+	if _, ok := m["type"]; !ok {
+		m["type"] = "object"
+	}
+	return m, nil
 }
 
 // extractSystemContent extracts system instructions from genai types into Bedrock SystemContentBlocks.

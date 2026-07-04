@@ -81,6 +81,14 @@ func (f *fakeSQSClient) GetQueueUrl(ctx context.Context, in *awssqs.GetQueueUrlI
 	return &awssqs.GetQueueUrlOutput{QueueUrl: &q}, nil
 }
 
+// GetQueueAttributes returns an empty attribute set — enough for the
+// broker-options RedrivePolicy validator to treat the queue as
+// non-DLQ-configured, which is the default behavior these tests
+// expect. Tests that need a specific RedrivePolicy should override.
+func (f *fakeSQSClient) GetQueueAttributes(ctx context.Context, in *awssqs.GetQueueAttributesInput, _ ...func(*awssqs.Options)) (*awssqs.GetQueueAttributesOutput, error) {
+	return &awssqs.GetQueueAttributesOutput{Attributes: map[string]string{}}, nil
+}
+
 // withFakeClient installs a fake sqsAPI + queue URL and restores the
 // previous resolveClient on cleanup.
 func withFakeClient(t *testing.T, client sqsAPI, queueURL string) {
