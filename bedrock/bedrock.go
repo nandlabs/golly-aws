@@ -20,8 +20,15 @@ const (
 	DefaultMaxTokens = 4096
 )
 
+// Compile-time interface conformance checks.
+var (
+	_ genai.Provider = (*BedrockProvider)(nil)
+	_ genai.Embedder = (*BedrockProvider)(nil)
+)
+
 // BedrockProvider implements the genai.Provider interface for AWS Bedrock
-// using the Converse and ConverseStream APIs.
+// using the Converse and ConverseStream APIs, and the genai.Embedder interface
+// via InvokeModel for Titan / Cohere embedding models.
 type BedrockProvider struct {
 	client      converseAPI
 	models      []string

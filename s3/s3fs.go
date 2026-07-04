@@ -54,7 +54,7 @@ func (fs *S3FS) Create(u *url.URL) (vfs.VFile, error) {
 	}
 	_, err = client.PutObject(context.Background(), putInput)
 	if err != nil {
-		return nil, err
+		return nil, mapS3Err(err)
 	}
 
 	return newS3File(client, fs, opts), nil
@@ -90,7 +90,7 @@ func (fs *S3FS) MkdirAll(u *url.URL) (vfs.VFile, error) {
 	}
 	_, err = client.PutObject(context.Background(), putInput)
 	if err != nil {
-		return nil, err
+		return nil, mapS3Err(err)
 	}
 
 	// Update opts with directory key
@@ -224,7 +224,7 @@ func (fs *S3FS) streamCopy(client *awss3.Client, src, dst *urlOpts) error {
 	}
 	getResult, err := client.GetObject(context.Background(), getInput)
 	if err != nil {
-		return err
+		return mapS3Err(err)
 	}
 	defer func() {
 		_ = getResult.Body.Close()
@@ -237,7 +237,7 @@ func (fs *S3FS) streamCopy(client *awss3.Client, src, dst *urlOpts) error {
 		ContentType: getResult.ContentType,
 	}
 	_, err = client.PutObject(context.Background(), putInput)
-	return err
+	return mapS3Err(err)
 }
 
 // Delete deletes the object at the given URL. If it's a directory, deletes all children.
@@ -290,7 +290,7 @@ func (fs *S3FS) List(u *url.URL) ([]vfs.VFile, error) {
 	for paginator.HasMorePages() {
 		page, pageErr := paginator.NextPage(context.Background())
 		if pageErr != nil {
-			return nil, pageErr
+			return nil, mapS3Err(pageErr)
 		}
 
 		for _, obj := range page.Contents {
@@ -354,7 +354,7 @@ func (fs *S3FS) Walk(u *url.URL, fn vfs.WalkFn) error {
 	for paginator.HasMorePages() {
 		page, pageErr := paginator.NextPage(context.Background())
 		if pageErr != nil {
-			return pageErr
+			return mapS3Err(pageErr)
 		}
 
 		for _, obj := range page.Contents {

@@ -36,7 +36,7 @@ func (f *S3File) Read(b []byte) (n int, err error) {
 		}
 		result, getErr := f.client.GetObject(context.Background(), input)
 		if getErr != nil {
-			return 0, getErr
+			return 0, mapS3Err(getErr)
 		}
 		f.reader = result.Body
 		if result.ContentType != nil {
@@ -88,6 +88,7 @@ func (f *S3File) Close() error {
 			ContentType: aws.String(ct),
 		}
 		_, err = f.client.PutObject(context.Background(), input)
+		err = mapS3Err(err)
 		f.writeBuffer = nil
 	}
 	// Close reader
@@ -117,7 +118,7 @@ func (f *S3File) ListAll() (files []vfs.VFile, err error) {
 	for paginator.HasMorePages() {
 		page, pageErr := paginator.NextPage(context.Background())
 		if pageErr != nil {
-			return nil, pageErr
+			return nil, mapS3Err(pageErr)
 		}
 
 		for _, obj := range page.Contents {
@@ -163,7 +164,7 @@ func (f *S3File) Delete() error {
 		Key:    aws.String(f.urlOpts.Key),
 	}
 	_, err := f.client.DeleteObject(context.Background(), input)
-	return err
+	return mapS3Err(err)
 }
 
 // DeleteAll deletes all objects under this prefix (for directory-like objects).
@@ -216,7 +217,7 @@ func (f *S3File) Info() (vfs.VFileInfo, error) {
 		}
 		listResult, listErr := f.client.ListObjectsV2(context.Background(), listInput)
 		if listErr != nil {
-			return nil, err
+			return nil, mapS3Err(listErr)
 		}
 		if aws.ToInt32(listResult.KeyCount) > 0 {
 			return &S3FileInfo{
@@ -225,7 +226,7 @@ func (f *S3File) Info() (vfs.VFileInfo, error) {
 				key:   f.urlOpts.Key,
 			}, nil
 		}
-		return nil, err
+		return nil, mapS3Err(err)
 	}
 
 	ct := ""

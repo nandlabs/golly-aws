@@ -12,10 +12,13 @@ import (
 var logger = l3.Get()
 
 // converseAPI abstracts the Bedrock runtime client methods used by the provider.
-// This interface enables testing with mock implementations.
+// This interface enables testing with mock implementations. It also exposes
+// InvokeModel for embedding-model calls, which don't go through the Converse
+// API surface.
 type converseAPI interface {
 	Converse(ctx context.Context, params *bedrockruntime.ConverseInput, optFns ...func(*bedrockruntime.Options)) (*bedrockruntime.ConverseOutput, error)
 	ConverseStream(ctx context.Context, params *bedrockruntime.ConverseStreamInput, optFns ...func(*bedrockruntime.Options)) (*bedrockruntime.ConverseStreamOutput, error)
+	InvokeModel(ctx context.Context, params *bedrockruntime.InvokeModelInput, optFns ...func(*bedrockruntime.Options)) (*bedrockruntime.InvokeModelOutput, error)
 }
 
 // getBedrockClient creates a Bedrock runtime client from the named awscfg.Config.

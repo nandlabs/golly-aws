@@ -61,17 +61,39 @@ err := store.Write("my-api-key", cred, context.Background())
 cred, err := store.Get("my-api-key", context.Background())
 ```
 
-### Deleting a Credential
-
-```go
-err := store.Delete("my-api-key", context.Background())
-```
-
 ### Listing All Credentials
 
 ```go
 keys, err := store.List(context.Background())
 ```
+
+### Per-Tenant Tags on Write
+
+`TagFilter` is a *lookup* filter — reusing it for writes leaks the same tags
+across tenants. Pass `WithTenantTags` when constructing the store to attach a
+distinct tag set to every secret created by that instance:
+
+```go
+tenantStore, _ := NewAWSSecretsStore(ctx, cfg,
+    WithTenantTags(map[string]string{"tenant": tenantID}),
+)
+scoped := secrets.Namespace(tenantStore, "tenant/"+tenantID,
+    secrets.WithAuthorizer(policy))
+```
+
+When `WithTenantTags` is set it replaces (does not merge with) `TagFilter` on
+`CreateSecret` calls. When it is not set, the legacy `TagFilter` behavior is
+preserved for backwards compatibility.
+
+### Deleting a Credential
+
+`AWSSecretsStore` does not expose a public `Delete` method. The upstream
+`secrets.Store` interface has no `Delete`, so a public `Delete` here would
+bypass `secrets.Namespaced` + `WithAuthorizer` — a caller could destroy tenant
+secrets with no policy check. Once upstream lands a `Deleter` optional
+interface (with an `OpDelete` authorization op), this store will implement it.
+Until then, call `GetClient().DeleteSecret(...)` explicitly if you need
+low-level delete access, and enforce authorization at the call site.
 
 ## IAM Policy Requirements
 
@@ -87,7 +109,6 @@ Minimum IAM policy for Secrets Manager operations:
         "secretsmanager:CreateSecret",
         "secretsmanager:GetSecretValue",
         "secretsmanager:PutSecretValue",
-        "secretsmanager:DeleteSecret",
         "secretsmanager:DescribeSecret",
         "secretsmanager:ListSecrets"
       ],
