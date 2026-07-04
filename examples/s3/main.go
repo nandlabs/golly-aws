@@ -55,8 +55,8 @@ func main() {
 	step("4. Read file as bytes")
 	f, err := mgr.OpenRaw(base + "/data/config.json")
 	check(err, "OpenRaw config.json")
-	data, err := f.AsBytes()
-	check(err, "AsBytes")
+	data, err := vfs.ReadAllBytes(f)
+	check(err, "ReadAllBytes")
 	_ = f.Close()
 	fmt.Printf("  config.json (%d bytes): %s\n", len(data), string(data))
 
@@ -190,8 +190,8 @@ func writeFile(mgr vfs.Manager, path, content string) {
 func readAndPrint(mgr vfs.Manager, path string) {
 	f, err := mgr.OpenRaw(path)
 	check(err, "OpenRaw "+path)
-	s, err := f.AsString()
-	check(err, "AsString "+path)
+	s, err := vfs.ReadAllString(f)
+	check(err, "ReadAllString "+path)
 	_ = f.Close()
 	fmt.Printf("  Content: %q\n", s)
 }
