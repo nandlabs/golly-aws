@@ -31,9 +31,45 @@ const (
 	OptMessageDeduplicationId = "MessageDeduplicationId"
 	// OptDelaySeconds is the message delay in seconds (0-900).
 	OptDelaySeconds = "DelaySeconds"
+
+	// defaultFIFOGroupId is the fallback MessageGroupId when a Keyed
+	// message on a FIFO queue exposes an empty routing key.
+	defaultFIFOGroupId = "default"
 )
 
 var sqsSchemes = []string{SQSScheme}
+
+// sqsAPI is the subset of the AWS SQS client surface the provider relies on.
+// It exists so tests can inject a fake without spinning up LocalStack — the
+// concrete *sqs.Client already satisfies this interface.
+type sqsAPI interface {
+	SendMessage(ctx context.Context, params *sqs.SendMessageInput, optFns ...func(*sqs.Options)) (*sqs.SendMessageOutput, error)
+	SendMessageBatch(ctx context.Context, params *sqs.SendMessageBatchInput, optFns ...func(*sqs.Options)) (*sqs.SendMessageBatchOutput, error)
+	ReceiveMessage(ctx context.Context, params *sqs.ReceiveMessageInput, optFns ...func(*sqs.Options)) (*sqs.ReceiveMessageOutput, error)
+	DeleteMessage(ctx context.Context, params *sqs.DeleteMessageInput, optFns ...func(*sqs.Options)) (*sqs.DeleteMessageOutput, error)
+	ChangeMessageVisibility(ctx context.Context, params *sqs.ChangeMessageVisibilityInput, optFns ...func(*sqs.Options)) (*sqs.ChangeMessageVisibilityOutput, error)
+	GetQueueUrl(ctx context.Context, params *sqs.GetQueueUrlInput, optFns ...func(*sqs.Options)) (*sqs.GetQueueUrlOutput, error)
+	// GetQueueAttributes lets the broker-options plumbing verify a
+	// queue's RedrivePolicy against DeadLetter / MaxDeliveryAttempts
+	// without going through queueAttributesGetter separately.
+	GetQueueAttributes(ctx context.Context, params *sqs.GetQueueAttributesInput, optFns ...func(*sqs.Options)) (*sqs.GetQueueAttributesOutput, error)
+}
+
+// resolveClient returns an SQS API client and the resolved queue URL for u.
+// It is a package-level var so tests can inject a fake client + queue URL
+// without touching the AWS SDK. Production callers get the LocalStack /
+// real-AWS wiring via getSQSClient + resolveQueueURL.
+var resolveClient = func(u *url.URL) (sqsAPI, string, error) {
+	client, err := getSQSClient(u)
+	if err != nil {
+		return nil, "", err
+	}
+	queueURL, err := resolveQueueURL(client, u)
+	if err != nil {
+		return nil, "", err
+	}
+	return client, queueURL, nil
+}
 
 // sqsListenerEntry tracks a single registered listener so it can be
 // individually cancelled by name via RemoveNamedListener, or as part of
@@ -51,7 +87,19 @@ type Provider struct {
 	closed    atomic.Bool
 	mu        sync.Mutex
 	listeners map[string][]sqsListenerEntry // host → registered listeners
+
+	obsMu    sync.RWMutex
+	observer messaging.Observer
 }
+
+// Compile-time interface assertions.
+var (
+	_ messaging.Producer           = (*Provider)(nil)
+	_ messaging.ProducerCtx        = (*Provider)(nil)
+	_ messaging.Receiver           = (*Provider)(nil)
+	_ messaging.ReceiverCtx        = (*Provider)(nil)
+	_ messaging.ObservableProvider = (*Provider)(nil)
+)
 
 // Id returns the provider id.
 func (p *Provider) Id() string {
@@ -80,15 +128,72 @@ func (p *Provider) NewMessage(scheme string, options ...messaging.Option) (messa
 	}, nil
 }
 
+// SetObserver installs (or clears, with nil) the metrics / tracing observer.
+// It is safe to call at any point in the provider's lifecycle; each hook
+// site snapshots the current observer under a read lock.
+func (p *Provider) SetObserver(obs messaging.Observer) {
+	p.obsMu.Lock()
+	p.observer = obs
+	p.obsMu.Unlock()
+}
+
+// currentObserver returns the currently installed observer (may be nil).
+func (p *Provider) currentObserver() messaging.Observer {
+	p.obsMu.RLock()
+	o := p.observer
+	p.obsMu.RUnlock()
+	return o
+}
+
+func (p *Provider) fireOnSend(u *url.URL, msg messaging.Message, err error, latency time.Duration) {
+	if o := p.currentObserver(); o != nil {
+		o.OnSend(u, msg, err, latency)
+	}
+}
+
+func (p *Provider) fireOnReceive(u *url.URL, msg messaging.Message, err error) {
+	if o := p.currentObserver(); o != nil {
+		o.OnReceive(u, msg, err)
+	}
+}
+
+// resolveGroupId returns the MessageGroupId to attach to a Send on the given
+// queue. Rules:
+//   - Explicit OptMessageGroupId option → always wins (preserves the prior
+//     opt-driven contract for callers who set it deliberately).
+//   - Standard queue + no explicit option → nil, routing keys ignored
+//     silently (SQS Standard has no message-group concept).
+//   - FIFO queue + Keyed message → routing key becomes the group id; empty
+//     routing keys collapse to "default".
+//   - FIFO queue + unkeyed message + no option → nil (SQS will reject
+//     server-side; caller must set the option or use a Keyed message).
+func resolveGroupId(msg messaging.Message, queueURL string, explicit *string) *string {
+	if explicit != nil && *explicit != "" {
+		return explicit
+	}
+	if !isFIFOQueue(queueURL) {
+		return nil
+	}
+	if _, ok := msg.(messaging.Keyed); ok {
+		key := messaging.RoutingKeyOf(msg)
+		if key == "" {
+			key = defaultFIFOGroupId
+		}
+		return &key
+	}
+	return nil
+}
+
 // Send sends a single message to the SQS queue.
 // URL format: sqs://queue-name
 func (p *Provider) Send(u *url.URL, msg messaging.Message, options ...messaging.Option) error {
-	client, err := getSQSClient(u)
-	if err != nil {
-		return err
-	}
+	return p.SendCtx(context.Background(), u, msg, options...)
+}
 
-	queueURL, err := resolveQueueURL(client, u)
+// SendCtx is the context-aware variant of Send. It passes ctx through to
+// the underlying AWS SDK v2 call so cancellation and deadlines propagate.
+func (p *Provider) SendCtx(ctx context.Context, u *url.URL, msg messaging.Message, options ...messaging.Option) error {
+	client, queueURL, err := resolveClient(u)
 	if err != nil {
 		return err
 	}
@@ -111,10 +216,12 @@ func (p *Provider) Send(u *url.URL, msg messaging.Message, options ...messaging.
 		return err
 	}
 
+	var explicitGroupId *string
 	if v, ok := optResolver.Get(OptMessageGroupId); ok {
 		groupId := v.(string)
-		input.MessageGroupId = &groupId
+		explicitGroupId = &groupId
 	}
+	input.MessageGroupId = resolveGroupId(msg, queueURL, explicitGroupId)
 	if v, ok := optResolver.Get(OptMessageDeduplicationId); ok {
 		dedupId := v.(string)
 		input.MessageDeduplicationId = &dedupId
@@ -123,9 +230,15 @@ func (p *Provider) Send(u *url.URL, msg messaging.Message, options ...messaging.
 		input.DelaySeconds = int32(v.(int))
 	}
 
-	_, err = client.SendMessage(context.Background(), input)
-	if err != nil {
-		return fmt.Errorf("sqs: send failed: %w", err)
+	start := time.Now()
+	_, sendErr := client.SendMessage(ctx, input)
+	latency := time.Since(start)
+	if sendErr != nil {
+		sendErr = fmt.Errorf("sqs: send failed: %w", sendErr)
+	}
+	p.fireOnSend(u, msg, sendErr, latency)
+	if sendErr != nil {
+		return sendErr
 	}
 
 	logger.InfoF("SQS message sent to %s", queueURL)
@@ -136,21 +249,37 @@ func (p *Provider) Send(u *url.URL, msg messaging.Message, options ...messaging.
 // SQS supports up to 10 messages per batch. If more than 10 messages are provided,
 // they will be sent in multiple batches.
 func (p *Provider) SendBatch(u *url.URL, msgs []messaging.Message, options ...messaging.Option) error {
+	return p.SendBatchCtx(context.Background(), u, msgs, options...)
+}
+
+// SendBatchCtx is the context-aware variant of SendBatch. ctx is propagated
+// into every SendMessageBatch call; observer hooks fire per message.
+func (p *Provider) SendBatchCtx(ctx context.Context, u *url.URL, msgs []messaging.Message, options ...messaging.Option) error {
 	if len(msgs) == 0 {
 		return nil
 	}
 
-	client, err := getSQSClient(u)
-	if err != nil {
-		return err
-	}
-
-	queueURL, err := resolveQueueURL(client, u)
+	client, queueURL, err := resolveClient(u)
 	if err != nil {
 		return err
 	}
 
 	optResolver := messaging.NewOptionsResolver(options...)
+	var explicitGroupId *string
+	if v, ok := optResolver.Get(OptMessageGroupId); ok {
+		groupId := v.(string)
+		explicitGroupId = &groupId
+	}
+	var explicitDedupId *string
+	if v, ok := optResolver.Get(OptMessageDeduplicationId); ok {
+		dedupId := v.(string)
+		explicitDedupId = &dedupId
+	}
+	var explicitDelay *int32
+	if v, ok := optResolver.Get(OptDelaySeconds); ok {
+		d := int32(v.(int))
+		explicitDelay = &d
+	}
 
 	// Validate broker-targeted options (golly v1.6.0) before batching.
 	if _, err := parseBrokerOptions(optResolver, isFIFOQueue(u.Host)); err != nil {
@@ -174,29 +303,41 @@ func (p *Provider) SendBatch(u *url.URL, msgs []messaging.Message, options ...me
 				MessageBody:       strPtr(msg.ReadAsStr()),
 				MessageAttributes: buildMessageAttributes(msg),
 			}
-			if v, ok := optResolver.Get(OptMessageGroupId); ok {
-				groupId := v.(string)
-				entries[j].MessageGroupId = &groupId
+			entries[j].MessageGroupId = resolveGroupId(msg, queueURL, explicitGroupId)
+			if explicitDedupId != nil {
+				entries[j].MessageDeduplicationId = explicitDedupId
 			}
-			if v, ok := optResolver.Get(OptMessageDeduplicationId); ok {
-				dedupId := v.(string)
-				entries[j].MessageDeduplicationId = &dedupId
-			}
-			if v, ok := optResolver.Get(OptDelaySeconds); ok {
-				entries[j].DelaySeconds = int32(v.(int))
+			if explicitDelay != nil {
+				entries[j].DelaySeconds = *explicitDelay
 			}
 		}
 
-		output, err := client.SendMessageBatch(context.Background(), &sqs.SendMessageBatchInput{
+		start := time.Now()
+		output, sendErr := client.SendMessageBatch(ctx, &sqs.SendMessageBatchInput{
 			QueueUrl: &queueURL,
 			Entries:  entries,
 		})
-		if err != nil {
-			return fmt.Errorf("sqs: batch send failed: %w", err)
+		latency := time.Since(start)
+
+		if sendErr != nil {
+			sendErr = fmt.Errorf("sqs: batch send failed: %w", sendErr)
+			// Fire per-message failure so callers can attribute errors.
+			for _, m := range batch {
+				p.fireOnSend(u, m, sendErr, latency)
+			}
+			return sendErr
 		}
+
+		var batchErr error
 		if len(output.Failed) > 0 {
-			return fmt.Errorf("sqs: %d messages failed in batch send: %s",
+			batchErr = fmt.Errorf("sqs: %d messages failed in batch send: %s",
 				len(output.Failed), *output.Failed[0].Message)
+		}
+		for _, m := range batch {
+			p.fireOnSend(u, m, batchErr, latency)
+		}
+		if batchErr != nil {
+			return batchErr
 		}
 
 		logger.InfoF("SQS batch sent %d messages to %s", len(batch), queueURL)
@@ -208,12 +349,13 @@ func (p *Provider) SendBatch(u *url.URL, msgs []messaging.Message, options ...me
 // Receive receives a single message from the SQS queue.
 // Supports options: WaitTimeSeconds, VisibilityTimeout.
 func (p *Provider) Receive(u *url.URL, options ...messaging.Option) (messaging.Message, error) {
-	client, err := getSQSClient(u)
-	if err != nil {
-		return nil, err
-	}
+	return p.ReceiveCtx(context.Background(), u, options...)
+}
 
-	queueURL, err := resolveQueueURL(client, u)
+// ReceiveCtx is the context-aware variant of Receive. ctx propagates into
+// the long-poll ReceiveMessage call so cancellation aborts the wait.
+func (p *Provider) ReceiveCtx(ctx context.Context, u *url.URL, options ...messaging.Option) (messaging.Message, error) {
+	client, queueURL, err := resolveClient(u)
 	if err != nil {
 		return nil, err
 	}
@@ -249,27 +391,33 @@ func (p *Provider) Receive(u *url.URL, options ...messaging.Option) (messaging.M
 		input.VisibilityTimeout = int32(v.(int))
 	}
 
-	output, err := client.ReceiveMessage(context.Background(), input)
+	output, err := client.ReceiveMessage(ctx, input)
 	if err != nil {
-		return nil, fmt.Errorf("sqs: receive failed: %w", err)
+		wrapped := fmt.Errorf("sqs: receive failed: %w", err)
+		p.fireOnReceive(u, nil, wrapped)
+		return nil, wrapped
 	}
 
 	if len(output.Messages) == 0 {
-		return nil, fmt.Errorf("sqs: no messages available")
+		notFound := fmt.Errorf("sqs: no messages available")
+		return nil, notFound
 	}
 
-	return p.toMessage(output.Messages[0], queueURL), nil
+	msg := p.toMessage(output.Messages[0], queueURL)
+	p.fireOnReceive(u, msg, nil)
+	return msg, nil
 }
 
 // ReceiveBatch receives a batch of messages from the SQS queue.
 // Supports options: BatchSize (default 10), WaitTimeSeconds, VisibilityTimeout.
 func (p *Provider) ReceiveBatch(u *url.URL, options ...messaging.Option) ([]messaging.Message, error) {
-	client, err := getSQSClient(u)
-	if err != nil {
-		return nil, err
-	}
+	return p.ReceiveBatchCtx(context.Background(), u, options...)
+}
 
-	queueURL, err := resolveQueueURL(client, u)
+// ReceiveBatchCtx is the context-aware variant of ReceiveBatch. ctx
+// propagates into the underlying ReceiveMessage call.
+func (p *Provider) ReceiveBatchCtx(ctx context.Context, u *url.URL, options ...messaging.Option) ([]messaging.Message, error) {
+	client, queueURL, err := resolveClient(u)
 	if err != nil {
 		return nil, err
 	}
@@ -314,9 +462,11 @@ func (p *Provider) ReceiveBatch(u *url.URL, options ...messaging.Option) ([]mess
 		input.VisibilityTimeout = int32(v.(int))
 	}
 
-	output, err := client.ReceiveMessage(context.Background(), input)
+	output, err := client.ReceiveMessage(ctx, input)
 	if err != nil {
-		return nil, fmt.Errorf("sqs: receive batch failed: %w", err)
+		wrapped := fmt.Errorf("sqs: receive batch failed: %w", err)
+		p.fireOnReceive(u, nil, wrapped)
+		return nil, wrapped
 	}
 
 	if len(output.Messages) == 0 {
@@ -326,6 +476,7 @@ func (p *Provider) ReceiveBatch(u *url.URL, options ...messaging.Option) ([]mess
 	msgs := make([]messaging.Message, len(output.Messages))
 	for i, sqsMsg := range output.Messages {
 		msgs[i] = p.toMessage(sqsMsg, queueURL)
+		p.fireOnReceive(u, msgs[i], nil)
 	}
 
 	return msgs, nil
@@ -335,12 +486,14 @@ func (p *Provider) ReceiveBatch(u *url.URL, options ...messaging.Option) ([]mess
 // The listener runs in a goroutine and can be stopped by calling Close on the provider.
 // Supports options: WaitTimeSeconds, VisibilityTimeout, Timeout (total listener duration in seconds).
 func (p *Provider) AddListener(u *url.URL, listener func(msg messaging.Message), options ...messaging.Option) error {
-	client, err := getSQSClient(u)
-	if err != nil {
-		return err
-	}
+	return p.AddListenerCtx(context.Background(), u, listener, options...)
+}
 
-	queueURL, err := resolveQueueURL(client, u)
+// AddListenerCtx is the context-aware variant of AddListener. The listener
+// goroutine derives its polling context from ctx, so cancelling ctx tears
+// the listener down (in addition to Provider.Close).
+func (p *Provider) AddListenerCtx(ctx context.Context, u *url.URL, listener func(msg messaging.Message), options ...messaging.Option) error {
+	client, queueURL, err := resolveClient(u)
 	if err != nil {
 		return err
 	}
@@ -371,10 +524,10 @@ func (p *Provider) AddListener(u *url.URL, listener func(msg messaging.Message),
 		visibilityTimeout = int32(v.(int))
 	}
 
-	ctx, cancel := context.WithCancel(context.Background())
+	pollCtx, cancel := context.WithCancel(ctx)
 	if v, ok := optResolver.Get(OptTimeout); ok {
 		timeout := time.Duration(v.(int)) * time.Second
-		ctx, cancel = context.WithTimeout(context.Background(), timeout)
+		pollCtx, cancel = context.WithTimeout(ctx, timeout)
 	}
 
 	// Recognise the same "NamedListener" option that golly's LocalProvider
@@ -400,7 +553,7 @@ func (p *Provider) AddListener(u *url.URL, listener func(msg messaging.Message),
 			}
 
 			select {
-			case <-ctx.Done():
+			case <-pollCtx.Done():
 				logger.InfoF("SQS listener stopped for %s", queueURL)
 				return
 			default:
@@ -416,11 +569,12 @@ func (p *Provider) AddListener(u *url.URL, listener func(msg messaging.Message),
 				input.VisibilityTimeout = visibilityTimeout
 			}
 
-			output, err := client.ReceiveMessage(ctx, input)
+			output, err := client.ReceiveMessage(pollCtx, input)
 			if err != nil {
-				if ctx.Err() != nil {
+				if pollCtx.Err() != nil {
 					return // context cancelled
 				}
+				p.fireOnReceive(u, nil, err)
 				logger.ErrorF("SQS listener receive error: %v", err)
 				time.Sleep(time.Second) // backoff on error
 				continue
@@ -428,6 +582,7 @@ func (p *Provider) AddListener(u *url.URL, listener func(msg messaging.Message),
 
 			for _, sqsMsg := range output.Messages {
 				msg := p.toMessage(sqsMsg, queueURL)
+				p.fireOnReceive(u, msg, nil)
 				listener(msg)
 			}
 		}
