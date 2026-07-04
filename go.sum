@@ -72,5 +72,5 @@ golang.org/x/crypto v0.53.0 h1:QZ4Muo8THX6CizN2vPPd5fBGHyogrdK9fG4wLPFUsto=
 golang.org/x/crypto v0.53.0/go.mod h1:DNLU434OwVakk9PzuwV8w62mAJpRJL3vsgcfp4Qnsio=
 golang.org/x/sys v0.46.0 h1:noSf2Fq6F8DBgS+LysIkx7rIExoNHJsxOAtPp4rthXw=
 golang.org/x/sys v0.46.0/go.mod h1:4GL1E5IUh+htKOUEOaiffhrAeqysfVGipDYzABqnCmw=
-oss.nandlabs.io/golly v1.6.0 h1:xUSHoiufr/FWtakE86hv0uFHoERgOc/rQqSCSsQtB0M=
-oss.nandlabs.io/golly v1.6.0/go.mod h1:EwNub/96FHpzWO55LN2RNiDTspB/UerdmLInHebC8o8=
+oss.nandlabs.io/golly v1.7.0 h1:JoWW2nmfcHAy0tC1GiGnSnYSOgjUbTyJ62219HPfWmM=
+oss.nandlabs.io/golly v1.7.0/go.mod h1:EwNub/96FHpzWO55LN2RNiDTspB/UerdmLInHebC8o8=

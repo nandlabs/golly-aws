@@ -13,7 +13,7 @@ require (
 	github.com/aws/aws-sdk-go-v2/service/sns v1.39.17
 	github.com/aws/aws-sdk-go-v2/service/sqs v1.42.27
 	github.com/redis/go-redis/v9 v9.21.0
-	oss.nandlabs.io/golly v1.6.0
+	oss.nandlabs.io/golly v1.7.0
 )
 
 require (
