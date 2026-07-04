@@ -34,19 +34,32 @@
 //
 //	cred, err := store.Get("my-secret", ctx)
 //
-// Delete a credential:
-//
-//	err := store.Delete("my-secret", ctx)
-//
 // List all credentials:
 //
 //	keys, err := store.List(ctx)
+//
+// # Delete
+//
+// AWSSecretsStore intentionally does not expose a Delete method. The upstream
+// secrets.Store interface has no Delete, so a public Delete here would bypass
+// secrets.Namespaced + WithAuthorizer and let callers destroy tenant secrets
+// without a policy check. Once upstream lands a Deleter optional interface
+// (with an OpDelete authorization op) this store will implement it.
+//
+// # Multi-tenant tags
+//
+// Use WithTenantTags at construction time to attach a fixed tag set to every
+// created secret without reusing the global TagFilter (which is a lookup
+// filter, not a per-write set):
+//
+//	store, err := NewAWSSecretsStore(ctx, cfg,
+//	    WithTenantTags(map[string]string{"tenant": tenantID}))
 //
 // # AWS Requirements
 //
 // - Valid AWS credentials configured (environment variables, profiles, or IAM role)
 // - Secrets Manager service enabled in the target region
-// - IAM permissions for CreateSecret, GetSecretValue, PutSecretValue, DeleteSecret, and ListSecrets
+// - IAM permissions for CreateSecret, GetSecretValue, PutSecretValue, DescribeSecret, and ListSecrets
 //
 // # Caching
 //
