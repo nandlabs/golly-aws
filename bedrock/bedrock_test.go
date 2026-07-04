@@ -17,6 +17,7 @@ import (
 type mockConverseAPI struct {
 	converseFunc       func(ctx context.Context, params *bedrockruntime.ConverseInput, optFns ...func(*bedrockruntime.Options)) (*bedrockruntime.ConverseOutput, error)
 	converseStreamFunc func(ctx context.Context, params *bedrockruntime.ConverseStreamInput, optFns ...func(*bedrockruntime.Options)) (*bedrockruntime.ConverseStreamOutput, error)
+	invokeModelFunc    func(ctx context.Context, params *bedrockruntime.InvokeModelInput, optFns ...func(*bedrockruntime.Options)) (*bedrockruntime.InvokeModelOutput, error)
 }
 
 func (m *mockConverseAPI) Converse(ctx context.Context, params *bedrockruntime.ConverseInput, optFns ...func(*bedrockruntime.Options)) (*bedrockruntime.ConverseOutput, error) {
@@ -31,6 +32,13 @@ func (m *mockConverseAPI) ConverseStream(ctx context.Context, params *bedrockrun
 		return m.converseStreamFunc(ctx, params, optFns...)
 	}
 	return nil, fmt.Errorf("converseStream not implemented")
+}
+
+func (m *mockConverseAPI) InvokeModel(ctx context.Context, params *bedrockruntime.InvokeModelInput, optFns ...func(*bedrockruntime.Options)) (*bedrockruntime.InvokeModelOutput, error) {
+	if m.invokeModelFunc != nil {
+		return m.invokeModelFunc(ctx, params, optFns...)
+	}
+	return nil, fmt.Errorf("invokeModel not implemented")
 }
 
 // --- Provider metadata tests ---
