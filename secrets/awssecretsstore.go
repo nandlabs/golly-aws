@@ -18,26 +18,78 @@ const (
 	AWSSecretsManagerProvider = "aws-secrets-manager"
 )
 
-// AWSSecretsStore implements the Store interface using AWS Secrets Manager
+// secretsAPI is the subset of the AWS Secrets Manager client that
+// AWSSecretsStore uses. Extracted so tests can substitute a mock; production
+// paths always receive the concrete *secretsmanager.Client.
+type secretsAPI interface {
+	GetSecretValue(ctx context.Context, in *secretsmanager.GetSecretValueInput, opts ...func(*secretsmanager.Options)) (*secretsmanager.GetSecretValueOutput, error)
+	DescribeSecret(ctx context.Context, in *secretsmanager.DescribeSecretInput, opts ...func(*secretsmanager.Options)) (*secretsmanager.DescribeSecretOutput, error)
+	CreateSecret(ctx context.Context, in *secretsmanager.CreateSecretInput, opts ...func(*secretsmanager.Options)) (*secretsmanager.CreateSecretOutput, error)
+	PutSecretValue(ctx context.Context, in *secretsmanager.PutSecretValueInput, opts ...func(*secretsmanager.Options)) (*secretsmanager.PutSecretValueOutput, error)
+}
+
+// AWSSecretsStore implements the golly secrets.Store interface using AWS
+// Secrets Manager.
+//
+// It intentionally implements only the methods on secrets.Store (Get, Write,
+// Provider). No public Delete is exposed: the upstream Store interface has
+// no Delete, so a public Delete on this type would bypass secrets.Namespaced
+// + WithAuthorizer and let a caller destroy tenant secrets without a policy
+// check. Delete support should be added upstream first (as an optional
+// Deleter interface tied to OpDelete) before it re-appears here.
 type AWSSecretsStore struct {
-	client    *secretsmanager.Client
-	region    string
-	tagFilter map[string]string
-	mutex     sync.RWMutex
-	cache     map[string]*secrets.Credential
-	cacheTTL  time.Duration
-	lastSync  map[string]time.Time
+	api        secretsAPI
+	client     *secretsmanager.Client
+	region     string
+	tagFilter  map[string]string
+	tenantTags map[string]string
+	mutex      sync.RWMutex
+	cache      map[string]*secrets.Credential
+	cacheTTL   time.Duration
+	lastSync   map[string]time.Time
 }
 
 // AWSSecretsStoreConfig holds configuration for creating an AWSSecretsStore
 type AWSSecretsStoreConfig struct {
 	Region    string            // AWS region
-	TagFilter map[string]string // Tags to filter secrets
+	TagFilter map[string]string // Tags to filter secrets on List/lookup
 	CacheTTL  time.Duration     // Cache TTL (0 = no caching)
 }
 
-// NewAWSSecretsStore creates a new AWS Secrets Manager-backed store
-func NewAWSSecretsStore(ctx context.Context, cfg *AWSSecretsStoreConfig) (*AWSSecretsStore, error) {
+// Option configures an AWSSecretsStore at construction time.
+type Option func(*AWSSecretsStore)
+
+// WithTenantTags supplies a fixed set of tags that Write applies to every
+// newly-created secret. Prefer this over reusing TagFilter for writes:
+// TagFilter is a global lookup filter and applying it to every write leaks
+// the same tags onto secrets belonging to different tenants. Callers that
+// namespace a store per tenant should pass their tenant's tags here.
+//
+//	tenantStore, _ := NewAWSSecretsStore(ctx, cfg,
+//	    WithTenantTags(map[string]string{"tenant": tenantID}),
+//	)
+//	scoped := secrets.Namespace(tenantStore, "tenant/"+tenantID,
+//	    secrets.WithAuthorizer(policy))
+//
+// When set, tenant tags replace (not merge with) the TagFilter values on
+// CreateSecret calls; a nil or empty map falls back to the config TagFilter
+// for backwards compatibility.
+func WithTenantTags(tags map[string]string) Option {
+	return func(as *AWSSecretsStore) {
+		if len(tags) == 0 {
+			return
+		}
+		copied := make(map[string]string, len(tags))
+		for k, v := range tags {
+			copied[k] = v
+		}
+		as.tenantTags = copied
+	}
+}
+
+// NewAWSSecretsStore creates a new AWS Secrets Manager-backed store. Extra
+// options (e.g. WithTenantTags) are applied after cfg is consumed.
+func NewAWSSecretsStore(ctx context.Context, cfg *AWSSecretsStoreConfig, opts ...Option) (*AWSSecretsStore, error) {
 	if cfg == nil {
 		cfg = &AWSSecretsStoreConfig{
 			Region: "us-east-1",
@@ -56,14 +108,21 @@ func NewAWSSecretsStore(ctx context.Context, cfg *AWSSecretsStoreConfig) (*AWSSe
 
 	client := secretsmanager.NewFromConfig(awsConfig)
 
-	return &AWSSecretsStore{
+	store := &AWSSecretsStore{
+		api:       client,
 		client:    client,
 		region:    cfg.Region,
 		tagFilter: cfg.TagFilter,
 		cache:     make(map[string]*secrets.Credential),
 		cacheTTL:  cfg.CacheTTL,
 		lastSync:  make(map[string]time.Time),
-	}, nil
+	}
+
+	for _, o := range opts {
+		o(store)
+	}
+
+	return store, nil
 }
 
 // Get retrieves a credential from AWS Secrets Manager
@@ -82,7 +141,7 @@ func (as *AWSSecretsStore) Get(key string, ctx context.Context) (*secrets.Creden
 		SecretId: aws.String(key),
 	}
 
-	result, err := as.client.GetSecretValue(ctx, input)
+	result, err := as.api.GetSecretValue(ctx, input)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get secret from AWS Secrets Manager: %w", err)
 	}
@@ -157,7 +216,7 @@ func (as *AWSSecretsStore) Write(key string, credential *secrets.Credential, ctx
 		SecretId: aws.String(key),
 	}
 
-	_, err = as.client.DescribeSecret(ctx, getInput)
+	_, err = as.api.DescribeSecret(ctx, getInput)
 	if err != nil {
 		// Secret doesn't exist, create it
 		createInput := &secretsmanager.CreateSecretInput{
@@ -165,11 +224,19 @@ func (as *AWSSecretsStore) Write(key string, credential *secrets.Credential, ctx
 			SecretString: aws.String(string(secretString)),
 		}
 
-		// Add tags if specified
-		if as.tagFilter != nil {
-			var tags []types.Tag
-			for k, v := range as.tagFilter {
-				v := v // Copy for pointer
+		// Prefer per-tenant tags supplied via WithTenantTags. Fall back to
+		// the legacy TagFilter only when no tenant tags were configured so
+		// existing callers keep working. TagFilter is a lookup filter, not
+		// a per-write tag set, and applying it to every write leaks the
+		// same tags across tenants — new callers should use WithTenantTags.
+		writeTags := as.tenantTags
+		if writeTags == nil {
+			writeTags = as.tagFilter
+		}
+		if len(writeTags) > 0 {
+			tags := make([]types.Tag, 0, len(writeTags))
+			for k, v := range writeTags {
+				k, v := k, v // Copy for pointer
 				tags = append(tags, types.Tag{
 					Key:   aws.String(k),
 					Value: aws.String(v),
@@ -178,7 +245,7 @@ func (as *AWSSecretsStore) Write(key string, credential *secrets.Credential, ctx
 			createInput.Tags = tags
 		}
 
-		_, err := as.client.CreateSecret(ctx, createInput)
+		_, err := as.api.CreateSecret(ctx, createInput)
 		if err != nil {
 			return fmt.Errorf("failed to create secret in AWS Secrets Manager: %w", err)
 		}
@@ -189,7 +256,7 @@ func (as *AWSSecretsStore) Write(key string, credential *secrets.Credential, ctx
 			SecretString: aws.String(string(secretString)),
 		}
 
-		_, err := as.client.PutSecretValue(ctx, updateInput)
+		_, err := as.api.PutSecretValue(ctx, updateInput)
 		if err != nil {
 			return fmt.Errorf("failed to update secret in AWS Secrets Manager: %w", err)
 		}
@@ -198,28 +265,6 @@ func (as *AWSSecretsStore) Write(key string, credential *secrets.Credential, ctx
 	// Update cache
 	as.cache[key] = credential
 	as.lastSync[key] = time.Now()
-
-	return nil
-}
-
-// Delete removes a credential from AWS Secrets Manager
-func (as *AWSSecretsStore) Delete(key string, ctx context.Context) error {
-	as.mutex.Lock()
-	defer as.mutex.Unlock()
-
-	input := &secretsmanager.DeleteSecretInput{
-		SecretId:                   aws.String(key),
-		ForceDeleteWithoutRecovery: aws.Bool(true),
-	}
-
-	_, err := as.client.DeleteSecret(ctx, input)
-	if err != nil {
-		return fmt.Errorf("failed to delete secret from AWS Secrets Manager: %w", err)
-	}
-
-	// Remove from cache
-	delete(as.cache, key)
-	delete(as.lastSync, key)
 
 	return nil
 }
