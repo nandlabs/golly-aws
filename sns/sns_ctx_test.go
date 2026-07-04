@@ -69,7 +69,7 @@ func (s *snsFakeServer) handle(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "text/xml")
 	switch action {
 	case "Publish":
-		fmt.Fprint(w, `<PublishResponse xmlns="http://sns.amazonaws.com/doc/2010-03-31/">`+
+		_, _ = fmt.Fprint(w, `<PublishResponse xmlns="http://sns.amazonaws.com/doc/2010-03-31/">`+
 			`<PublishResult><MessageId>test-msg-id</MessageId></PublishResult>`+
 			`<ResponseMetadata><RequestId>req-1</RequestId></ResponseMetadata>`+
 			`</PublishResponse>`)
@@ -89,14 +89,14 @@ func (s *snsFakeServer) handle(w http.ResponseWriter, r *http.Request) {
 				id, i)
 			i++
 		}
-		fmt.Fprintf(w,
+		_, _ = fmt.Fprintf(w,
 			`<PublishBatchResponse xmlns="http://sns.amazonaws.com/doc/2010-03-31/">`+
 				`<PublishBatchResult><Successful>%s</Successful><Failed></Failed></PublishBatchResult>`+
 				`<ResponseMetadata><RequestId>req-1</RequestId></ResponseMetadata>`+
 				`</PublishBatchResponse>`, successful.String())
 	case "CreateTopic":
 		name := form.Get("Name")
-		fmt.Fprintf(w,
+		_, _ = fmt.Fprintf(w,
 			`<CreateTopicResponse xmlns="http://sns.amazonaws.com/doc/2010-03-31/">`+
 				`<CreateTopicResult><TopicArn>arn:aws:sns:us-east-1:123456789012:%s</TopicArn></CreateTopicResult>`+
 				`<ResponseMetadata><RequestId>req-1</RequestId></ResponseMetadata>`+
