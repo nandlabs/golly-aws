@@ -103,6 +103,14 @@ func (p *Provider) Send(u *url.URL, msg messaging.Message, options ...messaging.
 
 	// Apply options
 	optResolver := messaging.NewOptionsResolver(options...)
+
+	// Validate broker-targeted options (golly v1.6.0) before touching AWS.
+	// On the send path we only need parse-time validation — DLQ / redrive
+	// checks are receive-side and run in AddListener / ReceiveBatch.
+	if _, err := parseBrokerOptions(optResolver, isFIFOQueue(u.Host)); err != nil {
+		return err
+	}
+
 	if v, ok := optResolver.Get(OptMessageGroupId); ok {
 		groupId := v.(string)
 		input.MessageGroupId = &groupId
@@ -143,6 +151,11 @@ func (p *Provider) SendBatch(u *url.URL, msgs []messaging.Message, options ...me
 	}
 
 	optResolver := messaging.NewOptionsResolver(options...)
+
+	// Validate broker-targeted options (golly v1.6.0) before batching.
+	if _, err := parseBrokerOptions(optResolver, isFIFOQueue(u.Host)); err != nil {
+		return err
+	}
 
 	// SQS limit is 10 messages per batch
 	const maxBatchSize = 10
@@ -212,6 +225,21 @@ func (p *Provider) Receive(u *url.URL, options ...messaging.Option) (messaging.M
 	}
 
 	optResolver := messaging.NewOptionsResolver(options...)
+
+	// Broker-targeted options (golly v1.6.0). AckTimeout populates
+	// VisibilityTimeout as a base; the SQS-specific OptVisibilityTimeout
+	// takes precedence below when both are set.
+	bo, err := parseBrokerOptions(optResolver, isFIFOQueue(u.Host))
+	if err != nil {
+		return nil, err
+	}
+	if bo.hasVisibilityTimeout {
+		input.VisibilityTimeout = bo.visibilityTimeout
+	}
+	if err := bo.validateRedrivePolicy(context.Background(), client, queueURL); err != nil {
+		return nil, err
+	}
+
 	if v, ok := optResolver.Get(OptWaitTimeSeconds); ok {
 		input.WaitTimeSeconds = int32(v.(int))
 	} else {
@@ -248,6 +276,15 @@ func (p *Provider) ReceiveBatch(u *url.URL, options ...messaging.Option) ([]mess
 
 	optResolver := messaging.NewOptionsResolver(options...)
 
+	// Broker-targeted options (golly v1.6.0).
+	bo, err := parseBrokerOptions(optResolver, isFIFOQueue(u.Host))
+	if err != nil {
+		return nil, err
+	}
+	if err := bo.validateRedrivePolicy(context.Background(), client, queueURL); err != nil {
+		return nil, err
+	}
+
 	maxMessages := int32(10)
 	if v, ok := optResolver.Get(OptBatchSize); ok {
 		maxMessages = int32(v.(int))
@@ -265,6 +302,9 @@ func (p *Provider) ReceiveBatch(u *url.URL, options ...messaging.Option) ([]mess
 		MessageAttributeNames: []string{"All"},
 	}
 
+	if bo.hasVisibilityTimeout {
+		input.VisibilityTimeout = bo.visibilityTimeout
+	}
 	if v, ok := optResolver.Get(OptWaitTimeSeconds); ok {
 		input.WaitTimeSeconds = int32(v.(int))
 	} else {
@@ -307,12 +347,26 @@ func (p *Provider) AddListener(u *url.URL, listener func(msg messaging.Message),
 
 	optResolver := messaging.NewOptionsResolver(options...)
 
+	// Broker-targeted options (golly v1.6.0). Parse + validate before we
+	// spawn the listener goroutine — an invalid combination should surface
+	// synchronously to the caller, not asynchronously via a log line.
+	bo, err := parseBrokerOptions(optResolver, isFIFOQueue(u.Host))
+	if err != nil {
+		return err
+	}
+	if err := bo.validateRedrivePolicy(context.Background(), client, queueURL); err != nil {
+		return err
+	}
+
 	waitTime := int32(5)
 	if v, ok := optResolver.Get(OptWaitTimeSeconds); ok {
 		waitTime = int32(v.(int))
 	}
 
 	var visibilityTimeout int32
+	if bo.hasVisibilityTimeout {
+		visibilityTimeout = bo.visibilityTimeout
+	}
 	if v, ok := optResolver.Get(OptVisibilityTimeout); ok {
 		visibilityTimeout = int32(v.(int))
 	}
