@@ -61,10 +61,12 @@ type IAMAuthOptions struct {
 // See the AWS doc "Authenticating users with IAM" for the canonical
 // algorithm: https://docs.aws.amazon.com/AmazonElastiCache/latest/red-ug/auth-iam.html
 func IAMAuthProvider(opts IAMAuthOptions) func(ctx context.Context) (string, error) {
-	ttl := opts.TTL
-	if ttl <= 0 || ttl > 15*time.Minute {
-		ttl = 15 * time.Minute
-	}
+	// AWS ElastiCache caps the IAM auth token lifetime at 15 minutes, and
+	// the SDK's SigV4 presigner uses that as its default X-Amz-Expires.
+	// opts.TTL is retained on the struct for future use (a shorter TTL
+	// would require signing a custom X-Amz-Expires ourselves) but is
+	// currently informational only.
+	_ = opts.TTL
 	signer := v4.NewSigner()
 
 	return func(ctx context.Context) (string, error) {
