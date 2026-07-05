@@ -7,6 +7,7 @@ require (
 	github.com/aws/aws-sdk-go-v2 v1.42.1
 	github.com/aws/aws-sdk-go-v2/config v1.32.27
 	github.com/aws/aws-sdk-go-v2/credentials v1.19.26
+	github.com/aws/aws-sdk-go-v2/service/bedrockagentruntime v1.53.2
 	github.com/aws/aws-sdk-go-v2/service/bedrockruntime v1.54.2
 	github.com/aws/aws-sdk-go-v2/service/dynamodb v1.59.2
 	github.com/aws/aws-sdk-go-v2/service/iam v1.54.7
@@ -15,6 +16,7 @@ require (
 	github.com/aws/aws-sdk-go-v2/service/sns v1.40.3
 	github.com/aws/aws-sdk-go-v2/service/sqs v1.44.2
 	github.com/aws/smithy-go v1.27.3
+	github.com/opensearch-project/opensearch-go/v3 v3.1.0
 	github.com/redis/go-redis/v9 v9.21.0
 	oss.nandlabs.io/golly v1.7.0
 )
