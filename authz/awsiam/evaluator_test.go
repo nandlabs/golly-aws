@@ -98,16 +98,6 @@ func (f *fakeCaller) callCount() int {
 	return f.calls
 }
 
-func (f *fakeCaller) lastActions() []string {
-	f.mu.Lock()
-	defer f.mu.Unlock()
-	if f.lastReq == nil {
-		return nil
-	}
-	out := append([]string(nil), f.lastReq.ActionNames...)
-	return out
-}
-
 const (
 	testPrincipalArn = "arn:aws:iam::123456789012:role/svc"
 	testBucketArn    = "arn:aws:s3:::my-bucket"
