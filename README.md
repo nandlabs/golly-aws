@@ -23,12 +23,13 @@
 
 ## Overview
 
-Golly AWS provides AWS service implementations for core [Golly](https://github.com/nandlabs/golly) interfaces — VFS, Messaging, GenAI, and Secrets. It uses the [AWS SDK for Go v2](https://github.com/aws/aws-sdk-go-v2) and follows Golly's provider pattern: blank-import a package to auto-register it, then use standard Golly managers with `s3://`, `sqs://`, or `sns://` URLs.
+Golly AWS provides AWS service implementations for the full set of [Golly](https://github.com/nandlabs/golly) capability interfaces — VFS, Messaging, Cache, Secrets, GenAI, Auth, Authz, Vectorstore, and Chrono leader election. It uses the [AWS SDK for Go v2](https://github.com/aws/aws-sdk-go-v2) and follows Golly's provider pattern: blank-import a package to auto-register it, then use standard Golly managers with `s3://`, `sqs://`, or `sns://` URLs.
 
 ## Compatibility
 
 | golly-aws | golly  | AWS SDK v2 |
 | --------- | ------ | ---------- |
+| v1.0.0    | v1.7.0 | v1.42.1    |
 | v0.3.1    | v1.5.1 | v1.41.7    |
 | v0.3.0    | v1.5.0 | v1.41.6    |
 | v0.2.0    | v1.4.0 | v1.41.2    |
@@ -36,7 +37,7 @@ Golly AWS provides AWS service implementations for core [Golly](https://github.c
 ## Installation
 
 ```bash
-go get oss.nandlabs.io/golly-aws@v0.3.1
+go get oss.nandlabs.io/golly-aws@v1.0.0
 ```
 
 ## Packages
@@ -47,30 +48,52 @@ go get oss.nandlabs.io/golly-aws@v0.3.1
 | -------------------------- | ----------------------------------------------------------------------------------------------------- |
 | [awscfg](awscfg/README.md) | Centralized AWS config management with named registry, multi-account/region, and URL-based resolution |
 
+### 🔐 Auth & Authorization
+
+| Package                                    | Description                                                                                                    |
+| ------------------------------------------ | -------------------------------------------------------------------------------------------------------------- |
+| [auth/cognito](auth/cognito/README.md)     | Cognito User Pool JWT verifier (JWKS-cached, id & access tokens) + DynamoDB-backed `auth.SessionStore`         |
+| [authz/awsiam](authz/awsiam/README.md)     | AWS IAM `authz.Policy` — cached `iam:SimulatePrincipalPolicy` evaluator + `IAMResource{Ctx,Arn}` live-check    |
+
 ### 🤖 AI & Intelligence
 
-| Package                      | Description                                                                                          |
-| ---------------------------- | ---------------------------------------------------------------------------------------------------- |
-| [bedrock](bedrock/README.md) | AWS Bedrock GenAI provider using the Converse API — supports Claude, Titan, Llama, Mistral, and more |
+| Package                                             | Description                                                                                                     |
+| --------------------------------------------------- | --------------------------------------------------------------------------------------------------------------- |
+| [bedrock](bedrock/README.md)                        | AWS Bedrock GenAI provider using the Converse API — Claude, Titan, Llama, Mistral, tool calling, and Embeddings |
+| [vectorstore/opensearch](vectorstore/opensearch/README.md) | OpenSearch kNN plugin backend — `_bulk` upsert/delete + `knn` search + metadata filters                    |
+| [vectorstore/bedrockkb](vectorstore/bedrockkb/README.md)   | Amazon Bedrock Knowledge Bases (read-only) — retrieve via the managed KB pipeline                          |
 
 ### 🗃️ Storage
 
-| Package            | Description                                                                                           |
-| ------------------ | ----------------------------------------------------------------------------------------------------- |
-| [s3](s3/README.md) | S3 implementation of the golly VFS interface — read, write, copy, move, list, walk, and directory ops |
+| Package            | Description                                                                                                                                          |
+| ------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------- |
+| [s3](s3/README.md) | S3 implementation of the golly VFS interface — read, write, copy, move, list, walk; VFileSystemCtx, Lister, RangeReader, and sentinel-error mapping |
 
-### � Secrets
+### 🧠 Cache
+
+| Package                                        | Description                                                                                          |
+| ---------------------------------------------- | ---------------------------------------------------------------------------------------------------- |
+| [cache/elasticache](cache/elasticache/README.md) | ElastiCache Redis backend for `cache.Cache[K,V]` + `Sweeper` + `Loader` (single-flight); IAM auth |
+
+### 🕐 Scheduling & Leader Election
+
+| Package                                    | Description                                                                                            |
+| ------------------------------------------ | ------------------------------------------------------------------------------------------------------ |
+| [chrono/dynamolock](chrono/dynamolock/README.md) | `chrono.LeaderElector` on a DynamoDB item — conditional PutItem with TTL-attribute auto-cleanup |
+| [chrono/s3lock](chrono/s3lock/README.md)         | `chrono.LeaderElector` on an S3 object — `If-None-Match` acquire + `If-Match` renew/steal        |
+
+### 🔑 Secrets
 
 | Package                      | Description                                                                                              |
 | ---------------------------- | -------------------------------------------------------------------------------------------------------- |
-| [secrets](secrets/README.md) | AWS Secrets Manager implementation of the golly secrets store — get, write, delete, list with caching    |
+| [secrets](secrets/README.md) | AWS Secrets Manager implementation of the golly secrets store — get, write, list; namespaced + Authorizer wiring; `WithTenantTags` |
 
-### �📡 Messaging
+### 📡 Messaging
 
-| Package              | Description                                                                                 |
-| -------------------- | ------------------------------------------------------------------------------------------- |
-| [sns](sns/README.md) | SNS implementation of the golly messaging provider — publish, batch publish, FIFO support   |
-| [sqs](sqs/README.md) | SQS implementation of the golly messaging provider — send, receive, listeners, FIFO support |
+| Package              | Description                                                                                                                             |
+| -------------------- | --------------------------------------------------------------------------------------------------------------------------------------- |
+| [sns](sns/README.md) | SNS provider — publish, batch publish, FIFO `MessageGroupId` via `Keyed`, `ProducerCtx`, `ObservableProvider`, broker-targeted options   |
+| [sqs](sqs/README.md) | SQS provider — send/receive/listeners, FIFO, `ListenerRemover`, `Producer/ReceiverCtx`, `Keyed → MessageGroupId`, broker-targeted options |
 
 > 📖 Full API documentation available at [pkg.go.dev](https://pkg.go.dev/oss.nandlabs.io/golly-aws)
 
