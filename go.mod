@@ -18,7 +18,7 @@ require (
 	github.com/aws/smithy-go v1.27.3
 	github.com/opensearch-project/opensearch-go/v3 v3.1.0
 	github.com/redis/go-redis/v9 v9.21.0
-	oss.nandlabs.io/golly v1.7.0
+	oss.nandlabs.io/golly v1.8.0
 )
 
 require (

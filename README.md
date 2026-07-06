@@ -29,6 +29,7 @@ Golly AWS provides AWS service implementations for the full set of [Golly](https
 
 | golly-aws | golly  | AWS SDK v2 |
 | --------- | ------ | ---------- |
+| v1.1.0    | v1.8.0 | v1.42.1    |
 | v1.0.0    | v1.7.0 | v1.42.1    |
 | v0.3.1    | v1.5.1 | v1.41.7    |
 | v0.3.0    | v1.5.0 | v1.41.6    |
@@ -37,7 +38,7 @@ Golly AWS provides AWS service implementations for the full set of [Golly](https
 ## Installation
 
 ```bash
-go get oss.nandlabs.io/golly-aws@v1.0.0
+go get oss.nandlabs.io/golly-aws@v1.1.0
 ```
 
 ## Packages
@@ -59,7 +60,7 @@ go get oss.nandlabs.io/golly-aws@v1.0.0
 
 | Package                                             | Description                                                                                                     |
 | --------------------------------------------------- | --------------------------------------------------------------------------------------------------------------- |
-| [bedrock](bedrock/README.md)                        | AWS Bedrock GenAI provider using the Converse API — Claude, Titan, Llama, Mistral, tool calling, and Embeddings |
+| [bedrock](bedrock/README.md)                        | AWS Bedrock GenAI provider using the Converse API — Claude, Titan, Nova, Llama, Mistral, Cohere; tool calling, Embeddings, and a model catalog (`CapabilityProvider`) for the golly v1.8.0 model router |
 | [vectorstore/opensearch](vectorstore/opensearch/README.md) | OpenSearch kNN plugin backend — `_bulk` upsert/delete + `knn` search + metadata filters                    |
 | [vectorstore/bedrockkb](vectorstore/bedrockkb/README.md)   | Amazon Bedrock Knowledge Bases (read-only) — retrieve via the managed KB pipeline                          |
 
