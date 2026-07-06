@@ -13,6 +13,7 @@ AWS Bedrock implementation of the [golly genai](https://pkg.go.dev/oss.nandlabs.
 - [Architecture](#architecture)
 - [Configuration](#configuration)
 - [Usage](#usage)
+- [Model Router / Capabilities](#model-router--capabilities)
 - [Supported Content Types](#supported-content-types)
 - [Options](#options)
 - [Tool Use (Function Calling)](#tool-use-function-calling)
@@ -215,6 +216,37 @@ if err := <-errChan; err != nil {
     log.Fatal(err)
 }
 ```
+
+## Model Router / Capabilities
+
+The provider implements golly's `genai.CapabilityProvider` (golly ≥ v1.8.0), so
+it advertises a structured model catalog to the capability-based model router.
+`ModelCatalog()` returns `[]genai.ModelInfo` covering the Bedrock model surface —
+Anthropic Claude, Amazon Nova/Titan, Meta Llama, Mistral, and Cohere — each with
+its capabilities (text, chat, streaming, vision, tool calling, JSON mode,
+reasoning, embeddings), context window, max output, and public on-demand pricing.
+`ModelInfoFor(id)` looks up a single model. This is additive: the existing
+`Models() []string` method is unchanged.
+
+Because the provider satisfies `CapabilityProvider`, dropping it into a router
+lets a `CapabilityStrategy` pick a model from a `Task`'s required capabilities
+rather than hard-coding a model id:
+
+```go
+provider, _ := bedrock.NewBedrockProvider(&bedrock.ProviderConfig{})
+set := genai.NewProviderSet(provider)
+registry, _ := genai.NewModelRegistry(set, genai.RoutingConfig{}) // reads ModelCatalog()
+router, _ := genai.NewRouter(
+    genai.WithProviders(set),
+    genai.WithRegistry(registry),
+    genai.WithStrategy(genai.NewCapabilityStrategy()),
+)
+// The router now selects a vision-capable Bedrock model for this task.
+task := genai.Task{RequiredCapabilities: []genai.Capability{genai.CapVision}}
+```
+
+Operators can override the compiled-in pricing or disable capabilities/models via
+`genai.RoutingConfig`.
 
 ## Supported Content Types
 
