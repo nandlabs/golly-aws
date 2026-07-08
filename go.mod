@@ -13,7 +13,7 @@ require (
 	github.com/aws/aws-sdk-go-v2/service/iam v1.54.7
 	github.com/aws/aws-sdk-go-v2/service/s3 v1.104.2
 	github.com/aws/aws-sdk-go-v2/service/secretsmanager v1.42.5
-	github.com/aws/aws-sdk-go-v2/service/sns v1.40.3
+	github.com/aws/aws-sdk-go-v2/service/sns v1.41.0
 	github.com/aws/aws-sdk-go-v2/service/sqs v1.44.2
 	github.com/aws/smithy-go v1.27.3
 	github.com/opensearch-project/opensearch-go/v3 v3.1.0
