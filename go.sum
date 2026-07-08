@@ -20,8 +20,8 @@ github.com/aws/aws-sdk-go-v2/service/bedrockagentruntime v1.53.2 h1:96hjjQFvHMyj
 github.com/aws/aws-sdk-go-v2/service/bedrockagentruntime v1.53.2/go.mod h1:bHoZpG6xgoU1HbqmX4vRvv+SLYPoVoIYRSquEBl6LWE=
 github.com/aws/aws-sdk-go-v2/service/bedrockruntime v1.54.2 h1:qmKlhMqcFouMkrntKDOZ93vDQLBAoVCVVNMo5sJmq8o=
 github.com/aws/aws-sdk-go-v2/service/bedrockruntime v1.54.2/go.mod h1:RRUdkfdYMMT5wzMXS7pZ6JvsrW1e9XqJgKQq2ie3rIk=
-github.com/aws/aws-sdk-go-v2/service/dynamodb v1.59.2 h1:Rk2vMAylCpfUapcjnDLApIyzBBqANEyTiN54VktI07Y=
-github.com/aws/aws-sdk-go-v2/service/dynamodb v1.59.2/go.mod h1:HnWoC3m6VmjUSg+kBL6OgQsXdyRAGzBYWb7B3J2f+JM=
+github.com/aws/aws-sdk-go-v2/service/dynamodb v1.60.0 h1:wnyC01GGkqvRvVI73+xRTr8qDyIZMzqjHlsFqWUUVSo=
+github.com/aws/aws-sdk-go-v2/service/dynamodb v1.60.0/go.mod h1:HnWoC3m6VmjUSg+kBL6OgQsXdyRAGzBYWb7B3J2f+JM=
 github.com/aws/aws-sdk-go-v2/service/iam v1.54.7 h1:undHpuVUg25wS2CpeXNqVjIcJComV2RE5AZ7mJGth2U=
 github.com/aws/aws-sdk-go-v2/service/iam v1.54.7/go.mod h1:5H/UUroHvcKm6l2qaqh3CMM6R9K91ls8Y8rVX6cG3ts=
 github.com/aws/aws-sdk-go-v2/service/internal/accept-encoding v1.13.13 h1:mbRIur/BiHK6SKPjoBIXSE/hJ6g6JGRLuxQy1jGjlN4=
