@@ -15,7 +15,7 @@ require (
 	github.com/aws/aws-sdk-go-v2/service/secretsmanager v1.43.0
 	github.com/aws/aws-sdk-go-v2/service/sns v1.41.0
 	github.com/aws/aws-sdk-go-v2/service/sqs v1.45.0
-	github.com/aws/smithy-go v1.27.3
+	github.com/aws/smithy-go v1.28.9
 	github.com/opensearch-project/opensearch-go/v3 v3.1.0
 	github.com/redis/go-redis/v9 v9.21.0
 	oss.nandlabs.io/golly v1.8.1
